@@ -158,15 +158,16 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             timeout = 120
         
         elif tipo == "loaded":
-            # Interactividad bajo carga: mide capacidad del scheduler de priorizar
-            # tareas foreground cuando la CPU está saturada por background workers.
+            # Interactividad bajo carga: asegura que stress-ng esté saturando
+            # la CPU antes de medir y limpia el proceso al terminar cada pasada.
             cmd = [
                 "hyperfine",
-                "--warmup", "1",
+                "--warmup", "2",
                 "-n", "foreground-under-load",
                 "-r", "15",
                 "--export-json", json_path,
-                "-p", "stress-ng --cpu $(nproc) --timeout 10s --quiet &",
+                "-p", "pkill -9 stress-ng 2>/dev/null; stress-ng --cpu $(nproc) --quiet & sleep 0.2",
+                "--cleanup", "pkill -9 stress-ng 2>/dev/null",
                 "python3 -c \"import hashlib;[hashlib.sha256(str(i).encode()).hexdigest() for i in range(5000)]\""
             ]
             nombre_test = "interactividad bajo carga"
