@@ -23,7 +23,8 @@ from widgets.password_dialog import DialogoPassword
 
 
 class VentanaSimple(Adw.ApplicationWindow):
-    """Ventana principal de la aplicación Reactor."""
+    """Ventana principal de la aplicación Reactor — REACTOR"""
+    REACTOR = "Reactor Experimental Avanzado Concurrente Telúrico para Optimización de Rendimiento"
 
     def __init__(self, app):
         super().__init__(application=app)
@@ -224,6 +225,7 @@ class VentanaSimple(Adw.ApplicationWindow):
         dialogo = Adw.AboutDialog(
             application_name="Reactor",
             version="7.0.0",
+            comments=f"{VentanaSimple.REACTOR}\nHerramienta de gestión y benchmarking para schedulers sched-ext (SCX).",
             developer_name="DinimixisDEMZ | UNHARMET",
             developers=[
                 "DinimixisDEMZ (Lead Developer/Lead Designer)",
@@ -237,8 +239,6 @@ class VentanaSimple(Adw.ApplicationWindow):
                 "Gekko (Designer)"
             ],
             copyright="© 2026 UNHARMET",
-            comments="""Herramienta de gestión y benchmarking para schedulers sched-ext (SCX).
-            Diseñado para Solus y CachyOS.""",
             license_type=Gtk.License.CUSTOM,
             license="""Esta aplicación es propiedad de DinimixisDEMZ | UNHARMET.
 Todos los derechos reservados mientras se encuentre en desarrollo.""",
