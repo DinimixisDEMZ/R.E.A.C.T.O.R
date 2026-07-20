@@ -1,5 +1,5 @@
 """
-Ventana principal de SCXCTL.
+Ventana principal de REACTOR.
 Orquesta los módulos de UI, core y widgets.
 """
 
@@ -24,12 +24,12 @@ from widgets.password_dialog import DialogoPassword
 
 class VentanaSimple(Adw.ApplicationWindow):
     """Ventana principal de la aplicación Reactor — REACTOR"""
-    REACTOR = "Reactor Experimental Avanzado Concurrente Telúrico para Optimización de Rendimiento"
+    REACTOR = "Reactor de Experimentación Avanzada Concurrente Telúrico para Optimización de Rendimiento"
 
     def __init__(self, app):
         super().__init__(application=app)
-        self.set_title("REACTOR")
-        self.set_default_size(850, 850)
+        self.set_title("R.E.A.C.T.O.R")
+        self.set_default_size(950, 850)
 
         # Libadwaita maneja el tema
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.DEFAULT)
@@ -66,11 +66,11 @@ class VentanaSimple(Adw.ApplicationWindow):
         self.toast_overlay.set_child(self.split_view)
 
         # ── Páginas ──
-        self.pag_controles = Adw.NavigationPage(title="Gestión", tag="page_a")
+        self.pag_controles = Adw.NavigationPage(title="Controles", tag="page_a")
         setup_controles_ui(self)
-        self.pag_rendimiento = Adw.NavigationPage(title="Benchmark", tag="page_b")
+        self.pag_rendimiento = Adw.NavigationPage(title="Rendimiento", tag="page_b")
         setup_rendimiento_ui(self)
-        self.pag_automatizacion = Adw.NavigationPage(title="Detección", tag="page_c")
+        self.pag_automatizacion = Adw.NavigationPage(title="Automatización", tag="page_c")
         setup_automatizacion_ui(self)
         self.pag_disponibilidad = Adw.NavigationPage(title="Disponibilidad", tag="page_d")
         setup_disponibilidad_ui(self)
@@ -132,7 +132,7 @@ class VentanaSimple(Adw.ApplicationWindow):
 
     def setup_sidebar(self):
         """Construye la barra lateral de navegación."""
-        pag_sidebar = Adw.NavigationPage(title="REACTOR", tag="sidebar")
+        pag_sidebar = Adw.NavigationPage(title="R.E.A.C.T.O.R", tag="sidebar")
         header_side = Adw.HeaderBar()
 
         # Sensor Térmico
@@ -223,10 +223,10 @@ class VentanaSimple(Adw.ApplicationWindow):
     def mostrar_acerca_de(self, btn):
         """Muestra el diálogo Acerca De."""
         dialogo = Adw.AboutDialog(
-            application_name="REACTOR",
-            version="7.0.0",
+            application_name="R.E.A.C.T.O.R",
+            version="0.7.0",
             comments=f"{VentanaSimple.REACTOR}\nHerramienta de gestión y benchmarking para schedulers sched-ext (SCX).",
-            developer_name="DinimixisDEMZ | UNHARMET",
+            developer_name="Equipo de Desarrollo R.E.A.C.T.O.R",
             developers=[
                 "DinimixisDEMZ (Lead Developer/Lead Designer)",
                 "opencode (AI Software Engineer - big-pickle)",
@@ -238,12 +238,9 @@ class VentanaSimple(Adw.ApplicationWindow):
                 "Ezku (Beta Tester)",
                 "Gekko (Designer)"
             ],
-            copyright="© 2026 UNHARMET",
-            license_type=Gtk.License.CUSTOM,
-            license="""Esta aplicación es propiedad de DinimixisDEMZ | UNHARMET.
-Todos los derechos reservados mientras se encuentre en desarrollo.""",
+            support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='application-x-firmware',
-            release_notes="""<p>Novedades en la versión 7.0:</p>
+            release_notes="""<p>Novedades en la versión 0.7.0:</p>
 <ul>
   <li>Motor de Detección Automática: Análisis completo de 6 pruebas por scheduler con umbral térmico, limpieza nuclear entre switches y aplicación automática del ganador.</li>
   <li>Gráfico de Hardware Cairo: Radar chart animado con 6 ejes (CPUs, Threads, GHz, L3, L2, Cores), pulso animado y fallback a barras.</li>
@@ -252,7 +249,7 @@ Todos los derechos reservados mientras se encuentre en desarrollo.""",
   <li>Persistencia SQLite: Historial de benchmarks con filtros por scheduler, tipo de prueba y rango de fechas, gráfico de tendencia interactivo.</li>
   <li>Monitoreo Térmico: Sensor discovery automático, calibración, alertas por niveles (estable/elevado/crítico) en sidebar.</li>
 </ul>
-<p>Novedades en la versión 6.0:</p>
+<p>Novedades en la versión 0.6.4:</p>
 <ul>
   <li>Segundo Motor de Benchmarking: Integración de hyperfine con 3 nuevas pruebas: Fork+Exec latency (100 runs), compilación paralela, interactividad bajo carga.</li>
   <li>Pestaña de Disponibilidad: Verificación de compatibilidad BPF de cada scheduler con timeout, clasificación de resultados (Verificado/Residente/Error).</li>
@@ -263,6 +260,23 @@ Todos los derechos reservados mientras se encuentre en desarrollo.""",
 </ul>"""
         )
 
+        dialogo.add_link("Página Web / GitHub", "https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R")
+        # Agrega la sección legal sin argumentos no reconocidos
+        dialogo.add_legal_section(
+            title="R.E.A.C.T.O.R Faircode License",
+            copyright="© 2026 El proyecto R.E.A.C.T.O.R y sus desarrolladores.",
+            
+            license_type=Gtk.License.CUSTOM,
+            license="""Se concede permiso para usar, estudiar y modificar este software para uso personal, investigación y uso interno en organizaciones.
+
+<b>Términos de la Licencia Faircode:</b>
+• <b>Uso Personal e Interno:</b> Gratuito y sin restricciones de funciones.
+• <b>Servicios a Terceros (SaaS):</b> Se prohíbe explícitamente revender, redistribuir comercialmente o alojar R.E.A.C.T.O.R como un servicio de pago para terceros sin autorización.
+• <b>Sin Garantía:</b> El software se proporciona "tal cual", sin garantías sobre modificaciones en el kernel o rendimiento del sistema.
+
+Para más información sobre el modelo Faircode:
+<a href="https://faircode.io">https://faircode.io</a>""",
+        )
         dialogo.present(self)
 
     def sincronizar_sistema(self):

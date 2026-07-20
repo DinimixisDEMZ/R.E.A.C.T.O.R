@@ -1,6 +1,6 @@
 """
-SCXCTL - Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)
-Versión 5.0.0 | © 2026 UNHARMET
+REACTOR - Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)
+Versión 0.7.0 | © 2026 UNHARMET
 
 Entry Point: Verificación de dependencias y arranque de la aplicación.
 """
@@ -43,7 +43,7 @@ def main():
             super().__init__(**kwargs)
             self.connect("activate", lambda a: VentanaSimple(a).present())
 
-    app = MiApp(application_id="com.dinimixis.scheduler")
+    app = MiApp(application_id="com.dinimixis.reactor")
     return app.run(sys.argv)
 
 
