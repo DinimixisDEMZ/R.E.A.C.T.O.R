@@ -262,9 +262,9 @@ def calcular_valor_grafico(res, tipo):
         ops = res.get("ops_real") or res.get("valor") or 0
         p95v = max(0.1, res.get("p95") or 1.0)
         return ops / p95v
-    elif tipo in ("fork", "loaded", "latencia_fork", "latencia_loaded"):
+    elif tipo in ("fork", "latencia_fork"):
         return 1000.0 / max(0.01, res.get("p95", 0))
-    elif tipo in ("compile", "latencia_compile"):
+    elif tipo in ("loaded", "latencia_loaded", "compile", "latencia_compile"):
         ops = res.get("valor") or 0
         p95v = max(0.1, res.get("p95") or 1.0)
         return ops / p95v

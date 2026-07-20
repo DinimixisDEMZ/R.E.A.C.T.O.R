@@ -320,14 +320,34 @@ class GraficoComparativo(Gtk.DrawingArea):
         cr.fill()
 
         if self._pulse_active:
-            p = 0.5 + 0.5 * math.sin(self.anim_tick * 0.04)
-            steps = 24
-            for i in range(steps, 0, -1):
-                r = radio * i / steps
-                alpha = p * 0.2 * (1.0 - i / steps)
-                if alpha < 0.001:
-                    continue
-                cr.set_source_rgba(tr, tg, tb, alpha)
+            phase = (self.anim_tick * 0.008) % 1.0
+            r = radio * phase
+
+            # glow trail behind the ring
+            if phase > 0.02:
+                grad = cairo.RadialGradient(cx, cy, 0, cx, cy, r)
+                grad.add_color_stop_rgba(0, tr, tg, tb, 0.05 * (1.0 - phase))
+                grad.add_color_stop_rgba(1, tr, tg, tb, 0.0)
+                cr.save()
+                for j in range(n + 1):
+                    ang = (2 * math.pi * (j % n) / n) - math.pi / 2
+                    px = cx + math.cos(ang) * radio
+                    py = cy + math.sin(ang) * radio
+                    if j == 0:
+                        cr.move_to(px, py)
+                    else:
+                        cr.line_to(px, py)
+                cr.close_path()
+                cr.clip()
+                cr.set_source(grad)
+                cr.paint()
+                cr.restore()
+
+            # ping ring at wave front
+            if phase > 0.01:
+                ring_alpha = 0.35 * (1.0 - phase * 0.8)
+                cr.set_line_width(1.5)
+                cr.set_source_rgba(tr, tg, tb, ring_alpha)
                 for j in range(n + 1):
                     ang = (2 * math.pi * (j % n) / n) - math.pi / 2
                     px = cx + math.cos(ang) * r
@@ -337,7 +357,7 @@ class GraficoComparativo(Gtk.DrawingArea):
                     else:
                         cr.line_to(px, py)
                 cr.close_path()
-                cr.fill()
+                cr.stroke()
 
         if self.highlight_sc:
             self._dibujar_tooltip(cr, width, height, tr, tg, tb, 1.0)
