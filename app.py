@@ -28,7 +28,7 @@ class VentanaSimple(Adw.ApplicationWindow):
 
     def __init__(self, app):
         super().__init__(application=app)
-        self.set_title("Reactor")
+        self.set_title("R.E.A.C.T.O.R")
         self.set_default_size(850, 850)
 
         # Libadwaita maneja el tema
@@ -132,7 +132,7 @@ class VentanaSimple(Adw.ApplicationWindow):
 
     def setup_sidebar(self):
         """Construye la barra lateral de navegación."""
-        pag_sidebar = Adw.NavigationPage(title="Reactor", tag="sidebar")
+        pag_sidebar = Adw.NavigationPage(title="R.E.A.C.T.O.R", tag="sidebar")
         header_side = Adw.HeaderBar()
 
         # Sensor Térmico
@@ -223,7 +223,7 @@ class VentanaSimple(Adw.ApplicationWindow):
     def mostrar_acerca_de(self, btn):
         """Muestra el diálogo Acerca De."""
         dialogo = Adw.AboutDialog(
-            application_name="Reactor",
+            application_name="R.E.A.C.T.O.R",
             version="7.0.0",
             comments=f"{VentanaSimple.REACTOR}\nHerramienta de gestión y benchmarking para schedulers sched-ext (SCX).",
             developer_name="DinimixisDEMZ | UNHARMET",
