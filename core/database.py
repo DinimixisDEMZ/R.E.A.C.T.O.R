@@ -245,6 +245,34 @@ def detectar_cambio_version(versiones):
     return len(cambios) > 0, cambios
 
 
+def consultar_runs_auto():
+    """Devuelve la lista de ejecuciones automáticas (run_type='auto'), ordenadas por timestamp ASC."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, timestamp, kernel_version, scxctl_version, stressng_version, "
+            "hyperfine_version, run_type FROM runs WHERE run_type = 'auto' "
+            "ORDER BY timestamp ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        _close_conn(conn)
+
+
+def cargar_resultados_de_run(run_id):
+    """Devuelve lista de dicts con todos los resultados de un run dado."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT scheduler_name, test_type, valor, p95, fairness, modo, timestamp "
+            "FROM results WHERE run_id = ? ORDER BY scheduler_name, test_type",
+            (run_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        _close_conn(conn)
+
+
 def eliminar_historial():
     conn = _get_conn()
     try:

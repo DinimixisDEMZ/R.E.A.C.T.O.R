@@ -66,11 +66,7 @@ def setup_disponibilidad_ui(win):
     )
 
     try:
-        rl = win.scx.scx_run(["scxctl", "list"])
-        from utils.helpers import RE_JSON_ARRAY
-        import json
-        match_json = RE_JSON_ARRAY.search(rl.stdout)
-        nombres = json.loads(match_json.group()) if match_json else []
+        nombres = win.scx.obtener_lista()
     except Exception:
         nombres = []
 
@@ -108,6 +104,7 @@ def setup_disponibilidad_ui(win):
         win._disp_filas[nombre] = (row, spinner, icono)
         grupo.add(row)
 
+    win._disp_grupo_scheds = grupo
     pref_page.add(grupo)
 
     # ── Registro de Verificación ──
@@ -149,6 +146,61 @@ def setup_disponibilidad_ui(win):
     view = Adw.ToolbarView(content=pref_page)
     view.add_top_bar(header)
     win.pag_disponibilidad.set_child(view)
+
+
+def recargar_disponibilidad_ui(win):
+    """Refresca la lista de schedulers en disponibilidad al cambiar modo simulación, sin destruir la página."""
+    try:
+        nuevos = win.scx.obtener_lista()
+    except Exception:
+        nuevos = []
+
+    kernel_actual = win.versiones.get("kernel", "")
+    cache = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
+
+    antiguos = set(win._disp_filas.keys())
+    nuevos_set = set(nuevos)
+
+    grupo = win._disp_grupo_scheds
+
+    # Eliminar filas que ya no corresponden
+    for nombre in antiguos - nuevos_set:
+        row, _, _ = win._disp_filas.pop(nombre)
+        grupo.remove(row)
+
+    # Añadir filas nuevas
+    for nombre in nuevos_set - antiguos:
+        row = Adw.ActionRow(title=nombre)
+
+        suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+        spinner = Adw.Spinner()
+        spinner.set_visible(False)
+        icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
+        icono.add_css_class("dim-label")
+        suffix_box.append(spinner)
+        suffix_box.append(icono)
+        row.add_suffix(suffix_box)
+
+        if nombre in cache:
+            compatible, mensaje, ts = cache[nombre]
+            if compatible:
+                icono.set_from_icon_name("emblem-ok-symbolic")
+                icono.remove_css_class("dim-label")
+                icono.add_css_class("success")
+            else:
+                icono.set_from_icon_name("dialog-error-symbolic")
+                icono.remove_css_class("dim-label")
+                icono.add_css_class("error")
+            row.set_subtitle(_mensaje_corto(mensaje, compatible))
+            if mensaje:
+                row.set_tooltip_text(mensaje)
+        else:
+            row.set_subtitle("Sin verificar")
+
+        win._disp_filas[nombre] = (row, spinner, icono)
+        grupo.add(row)
+
+    _refrescar_historial_compat(win)
 
 
 def _actualizar_fila(r, s, i, ok, texto, warn):
@@ -267,7 +319,7 @@ def _refrescar_historial_compat(win):
         box.append(chips_box)
         win._disp_grupo_historial.add(box)
         agregados.append(sched)
-        if len(agregados) > 1:
+        if len(agregados) > 0:
             sep = Gtk.Separator(margin_top=4, margin_bottom=4)
             sep.set_visible(True)
             win._disp_grupo_historial.add(sep)
@@ -379,6 +431,11 @@ def iniciar_verificacion(win, btn=None):
             log(win.text_view_logs_disp, "VERIFICACIÓN FINALIZADA", True)
             win.compatibles = lista_exitosos
             GLib.idle_add(lambda: _refrescar_historial_compat(win))
+            try:
+                from ui.automatizacion import _refrescar_auto_schedulers
+                GLib.idle_add(lambda: _refrescar_auto_schedulers(win))
+            except ImportError:
+                pass
 
             def _update_badge():
                 win.nav_disponibilidad.remove_css_class("pulse-warning")

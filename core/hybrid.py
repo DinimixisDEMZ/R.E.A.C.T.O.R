@@ -133,7 +133,8 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "hyperfine",
                 "--warmup", "3",
                 "-n", "fork-exec",
-                "-r", "100",
+                "-r", "10000",
+                "-N",
                 "--export-json", json_path,
                 "/bin/true"
             ]
@@ -141,14 +142,17 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             timeout = 30
         
         elif tipo == "compile":
-            # Compilación: warmup reduce cold cache, 3 runs bastan
+            # Compilación: -p (prepare) limpia el árbol ANTES de medir cada intento,
+            # para que el cronómetro solo mida la compilación real.
+            cpus = os.cpu_count() or 4
             cmd = [
                 "hyperfine",
-                "--warmup", "1",
+                "--warmup", "2",
                 "-n", "parallel-make",
-                "-r", "3",
+                "-r", "5",
                 "--export-json", json_path,
-                "make -C /tmp/rt-tests clean 2>/dev/null && make -C /tmp/rt-tests cyclictest -j$(nproc) 2>/dev/null"
+                "-p", "make -C /tmp/rt-tests clean >/dev/null 2>&1",
+                f"make -C /tmp/rt-tests cyclictest -j{cpus} >/dev/null 2>&1"
             ]
             nombre_test = "compilación paralela"
             timeout = 120
@@ -162,7 +166,7 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "-n", "foreground-under-load",
                 "-r", "15",
                 "--export-json", json_path,
-                "-p", "stress-ng --cpu $(nproc) --timeout 1s --quiet &",
+                "-p", "stress-ng --cpu $(nproc) --timeout 10s --quiet &",
                 "python3 -c \"import hashlib;[hashlib.sha256(str(i).encode()).hexdigest() for i in range(5000)]\""
             ]
             nombre_test = "interactividad bajo carga"

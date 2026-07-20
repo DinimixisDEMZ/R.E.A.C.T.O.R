@@ -10,6 +10,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from core.database import activar_db_temporal, desactivar_db_temporal
+from ui.disponibilidad import recargar_disponibilidad_ui
 
 
 def setup_controles_ui(win):
@@ -55,7 +56,18 @@ def setup_controles_ui(win):
         else:
             desactivar_db_temporal()
             est = "DESACTIVADO"
+        win.compatibles = None
+        win.nav_disponibilidad.remove_css_class("pulse-warning")
+        img = win.nav_disponibilidad.get_child().get_first_child()
+        if isinstance(img, Gtk.Image):
+            for cls in ["success", "error"]:
+                img.remove_css_class(cls)
+            img.set_from_icon_name("dialog-question-symbolic")
         win.toast_overlay.add_toast(Adw.Toast.new(f"Modo Desarrollador: {est}"))
+        recargar_disponibilidad_ui(win)
+        if hasattr(win, '_refrescar_auto_schedulers'):
+            from ui.automatizacion import _refrescar_auto_schedulers
+            _refrescar_auto_schedulers(win)
         win.sincronizar_sistema()
 
     sw_dev.connect("notify::active", _toggle_dev)

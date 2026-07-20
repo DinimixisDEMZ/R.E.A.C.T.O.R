@@ -80,13 +80,13 @@ def calcular_mejores(brutos, tipos=("cpu", "threads", "memory")):
             val = item.get('valor') or item.get('val') or (item.get('metrics') or {}).get('bogo-ops-per-second-real-time') or 0
             p95 = item.get('p95')
             if not p95:
-                # intentar derivar de métricas crudas
                 m = item.get('metrics') or {}
                 ns = m.get('nanosecs-per-context-switch-pipe-method') or m.get('nanosecs-per-context-switch') or 0
                 if ns:
                     p95 = ns / 1000.0
                 else:
-                    p95 = 1.0
+                    ns_mutex = m.get('nanosecs-per-mutex') or 0
+                    p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
 
             vals.append(val)
             if p95 and p95 > 0:
@@ -111,7 +111,11 @@ def _normalizar_entrada(item):
     p95 = item.get('p95')
     if not p95:
         ns = m.get('nanosecs-per-context-switch-pipe-method') or m.get('nanosecs-per-context-switch') or 0
-        p95 = ns / 1000.0 if ns else 1.0
+        if ns:
+            p95 = ns / 1000.0
+        else:
+            ns_mutex = m.get('nanosecs-per-mutex') or 0
+            p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
 
     fairness = item.get('fairness')
     if fairness is None:

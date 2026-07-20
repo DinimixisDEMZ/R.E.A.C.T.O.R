@@ -192,6 +192,7 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         cpu_usage = metricas.get("cpu-usage-per-instance", 0)
         wall_time = metricas.get("wall-clock-time", tiempo)
         ns_per_switch = metricas.get("nanosecs-per-context-switch-pipe-method", 0)
+        ns_per_mutex = metricas.get("nanosecs-per-mutex", 0)
         
         # Valor principal (ops/s real-time)
         valor = ops_real if ops_real > 0 else (bogo_ops / wall_time if wall_time > 0 else 0)
@@ -200,11 +201,12 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         if logs and tv_log:
             _log(tv_log, f"Intermedios: bogo_ops={bogo_ops}, ops_real={ops_real}, ops_usr_sys={ops_usr_sys}, cpu_usage={cpu_usage}, wall_time={wall_time}, ns_per_switch={ns_per_switch}")
         
-        # P95 equivalente: Para context switch usamos ns_per_switch, para otros estimamos
+        # P95 equivalente: latencia directa cuando está disponible
         if tipo == "cpu" and ns_per_switch > 0:
-            p95 = ns_per_switch / 1000.0  # Convertir ns → µs para consistencia
+            p95 = ns_per_switch / 1000.0
+        elif tipo == "memory" and ns_per_mutex > 0:
+            p95 = ns_per_mutex / 1000.0
         elif ops_usr_sys > 0 and ops_real > 0:
-            # Ratio de overhead: cuánto tiempo se pierde en system vs trabajo real
             p95 = (ops_usr_sys / ops_real - 1.0) * 100.0 if ops_usr_sys > ops_real else 1.0
         else:
             p95 = 1.0
@@ -271,3 +273,4 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         if logs and tv_log:
             _log(tv_log, f"Error: {e}", es_error=True)
         return None
+
