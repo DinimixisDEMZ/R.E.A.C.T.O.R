@@ -200,6 +200,7 @@ class VentanaSimple(Adw.ApplicationWindow):
             developer_name="DinimixisDEMZ | UNHARMET",
             developers=[
                 "DinimixisDEMZ (Lead Developer/Lead Designer)",
+                "opencode (AI Software Engineer - big-pickle)",
                 "Antigravity (AI Assistant)",
                 "Dark Anubis (IT Technical Specialist, System Administrator, DevOps & Network Tech.)",
                 "MD1000[Emedé] (Beta Tester/Designer)",
@@ -215,7 +216,7 @@ class VentanaSimple(Adw.ApplicationWindow):
             license="""Esta aplicación es propiedad de DinimixisDEMZ | UNHARMET.
 Todos los derechos reservados mientras se encuentre en desarrollo.""",
             application_icon='application-x-firmware',
-            release_notes="""<h2>Novedades en la versión 7.0</h2>
+            release_notes="""<p>Novedades en la versión 7.0:</p>
 <ul>
   <li>Motor de Detección Automática: Análisis completo de 6 pruebas por scheduler con umbral térmico, limpieza nuclear entre switches y aplicación automática del ganador.</li>
   <li>Gráfico de Hardware Cairo: Radar chart animado con 6 ejes (CPUs, Threads, GHz, L3, L2, Cores), pulso animado y fallback a barras.</li>
@@ -224,7 +225,7 @@ Todos los derechos reservados mientras se encuentre en desarrollo.""",
   <li>Persistencia SQLite: Historial de benchmarks con filtros por scheduler, tipo de prueba y rango de fechas, gráfico de tendencia interactivo.</li>
   <li>Monitoreo Térmico: Sensor discovery automático, calibración, alertas por niveles (estable/elevado/crítico) en sidebar.</li>
 </ul>
-<h2>Novedades en la versión 6.0</h2>
+<p>Novedades en la versión 6.0:</p>
 <ul>
   <li>Segundo Motor de Benchmarking: Integración de hyperfine con 3 nuevas pruebas: Fork+Exec latency (100 runs), compilación paralela, interactividad bajo carga.</li>
   <li>Pestaña de Disponibilidad: Verificación de compatibilidad BPF de cada scheduler con timeout, clasificación de resultados (Verificado/Residente/Error).</li>

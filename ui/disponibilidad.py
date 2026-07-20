@@ -11,6 +11,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from utils.helpers import log, limpiar_texto
+from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad
 
 
 def setup_disponibilidad_ui(win):
@@ -38,9 +39,11 @@ def setup_disponibilidad_ui(win):
     except Exception:
         nombres = []
 
+    kernel_actual = win.versiones.get("kernel", "")
+    cache = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
+
     for nombre in nombres:
         row = Adw.ActionRow(title=nombre)
-        row.set_subtitle("Sin verificar")
 
         suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
         spinner = Adw.Spinner()
@@ -50,6 +53,20 @@ def setup_disponibilidad_ui(win):
         suffix_box.append(spinner)
         suffix_box.append(icono)
         row.add_suffix(suffix_box)
+
+        if nombre in cache:
+            compatible, mensaje, ts = cache[nombre]
+            if compatible:
+                icono.set_from_icon_name("emblem-ok-symbolic")
+                icono.remove_css_class("dim-label")
+                icono.add_css_class("success")
+            else:
+                icono.set_from_icon_name("dialog-error-symbolic")
+                icono.remove_css_class("dim-label")
+                icono.add_css_class("error")
+            row.set_subtitle(mensaje or ("Disponible" if compatible else "No disponible"))
+        else:
+            row.set_subtitle("Sin verificar")
 
         win._disp_filas[nombre] = (row, spinner, icono)
         grupo.add(row)
@@ -78,6 +95,15 @@ def setup_disponibilidad_ui(win):
     win._btn_verificar_disp.connect("clicked", lambda b: iniciar_verificacion(win, b))
     header.pack_start(win._btn_verificar_disp)
 
+    btn_limpiar = Gtk.Button(
+        icon_name="user-trash-symbolic",
+        tooltip_text="Limpiar caché de compatibilidad",
+        css_classes=["flat"],
+        valign=Gtk.Align.CENTER
+    )
+    btn_limpiar.connect("clicked", lambda b: _limpiar_cache(win))
+    header.pack_end(btn_limpiar)
+
     view = Adw.ToolbarView(content=pref_page)
     view.add_top_bar(header)
     win.pag_disponibilidad.set_child(view)
@@ -101,6 +127,19 @@ def _actualizar_fila(r, s, i, ok, texto, warn):
     else:
         i.set_from_icon_name("dialog-error-symbolic")
         i.add_css_class("error")
+
+
+def _limpiar_cache(win):
+    """Limpia la caché de compatibilidad y resetea las filas."""
+    limpiar_compatibilidad()
+    for nombre, (row, spinner, icono) in win._disp_filas.items():
+        row.set_subtitle("Sin verificar")
+        icono.set_from_icon_name("dialog-question-symbolic")
+        icono.remove_css_class("success")
+        icono.remove_css_class("error")
+        icono.remove_css_class("warning")
+        icono.add_css_class("dim-label")
+    log(win.text_view_logs_disp, "Caché de compatibilidad limpiada", True)
 
 
 def iniciar_verificacion(win, btn=None):
@@ -130,6 +169,7 @@ def iniciar_verificacion(win, btn=None):
                     if disponible:
                         lista_exitosos.append(nombre)
 
+                    guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg)
                     GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg, w=is_warn:
                                   _actualizar_fila(r, s, i, ok, t, w))
                     continue
@@ -193,6 +233,7 @@ def iniciar_verificacion(win, btn=None):
 
                 msg_safe = GLib.markup_escape_text(msg)
 
+                guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg_safe)
                 GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg_safe, w=is_warn:
                               _actualizar_fila(r, s, i, ok, t, w))
                 win.scx.ejecutar_con_sudo(["scxctl", "stop"])

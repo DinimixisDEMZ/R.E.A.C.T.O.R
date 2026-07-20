@@ -36,10 +36,21 @@ CREATE TABLE IF NOT EXISTS results (
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS compatibility (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scheduler_name TEXT NOT NULL,
+    kernel_version TEXT NOT NULL,
+    is_compatible INTEGER NOT NULL,
+    message TEXT,
+    timestamp REAL NOT NULL,
+    UNIQUE(scheduler_name, kernel_version)
+);
+
 CREATE INDEX IF NOT EXISTS idx_results_scheduler ON results(scheduler_name);
 CREATE INDEX IF NOT EXISTS idx_results_test_type ON results(test_type);
 CREATE INDEX IF NOT EXISTS idx_results_run_id ON results(run_id);
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_compat_kernel ON compatibility(kernel_version);
 """
 
 
@@ -207,6 +218,43 @@ def eliminar_historial():
     try:
         conn.execute("DELETE FROM results")
         conn.execute("DELETE FROM runs")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def guardar_compatibilidad(nombre, kernel, compatible, mensaje):
+    conn = _get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO compatibility (scheduler_name, kernel_version, is_compatible, message, timestamp) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(scheduler_name, kernel_version) DO UPDATE SET "
+            "is_compatible=excluded.is_compatible, message=excluded.message, timestamp=excluded.timestamp",
+            (nombre, kernel, 1 if compatible else 0, mensaje, time.time())
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def cargar_compatibilidad(kernel):
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT scheduler_name, is_compatible, message, timestamp "
+            "FROM compatibility WHERE kernel_version = ?",
+            (kernel,)
+        ).fetchall()
+        return {r["scheduler_name"]: (bool(r["is_compatible"]), r["message"], r["timestamp"]) for r in rows}
+    finally:
+        conn.close()
+
+
+def limpiar_compatibilidad():
+    conn = _get_conn()
+    try:
+        conn.execute("DELETE FROM compatibility")
         conn.commit()
     finally:
         conn.close()

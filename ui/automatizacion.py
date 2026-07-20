@@ -264,7 +264,7 @@ def iniciar_auto_test(win, btn):
 
                 GLib.idle_add(win.fila_ganador.set_subtitle, f"Analizando {sc}: {nombres_test[idx]} ({idx+1}/6)...")
 
-                if t in hybrid_types:
+                if t in HYBRID_TYPES:
                     res = correr_hybrid(t, win.scx, win.text_view_logs_auto, tiempo=5, logs=True, modo_dev=win.modo_desarrollador)
                 else:
                     res = correr_benchmark(t, win.scx, win.text_view_logs_auto, tiempo=5, logs=True, modo_dev=win.modo_desarrollador)
