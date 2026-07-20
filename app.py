@@ -18,7 +18,7 @@ from ui.automatizacion import setup_automatizacion_ui
 from ui.disponibilidad import setup_disponibilidad_ui
 from ui.diagnostico import setup_diagnostico_ui
 from ui.historial import setup_historial_ui
-from core.database import inicializar_db, obtener_versiones, detectar_cambio_version
+from core.database import inicializar_db, obtener_versiones, detectar_cambio_version, cargar_compatibilidad
 from widgets.password_dialog import DialogoPassword
 
 
@@ -52,6 +52,11 @@ class VentanaSimple(Adw.ApplicationWindow):
         # ── Historial ──
         inicializar_db()
         self.versiones = obtener_versiones()
+
+        # ── Caché de compatibilidad ──
+        kernel_actual = self.versiones.get("kernel", "")
+        cache_compat = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
+        self.compatibles = [n for n, (ok, _, _) in cache_compat.items() if ok] or None
 
         # ── Layout ──
         self.toast_overlay = Adw.ToastOverlay()
@@ -152,7 +157,11 @@ class VentanaSimple(Adw.ApplicationWindow):
         self.nav_disponibilidad = self.agregar_opcion(self.lista_nav, "Disponibilidad", "dialog-information-symbolic", self.pag_disponibilidad)
         self.agregar_opcion(self.lista_nav, "Diagnóstico", "sonar-symbolic", self.pag_diagnostico)
         self.agregar_opcion(self.lista_nav, "Historial", "document-open-recent-symbolic", self.pag_historial)
-        self.nav_disponibilidad.add_css_class("pulse-warning")
+
+        kernel_actual = self.versiones.get("kernel", "")
+        cache_compat = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
+        if not cache_compat:
+            self.nav_disponibilidad.add_css_class("pulse-warning")
 
         view_side = Adw.ToolbarView(content=self.lista_nav)
         view_side.add_top_bar(header_side)

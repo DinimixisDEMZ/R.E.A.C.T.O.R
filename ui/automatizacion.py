@@ -14,7 +14,7 @@ from core.benchmark import correr_benchmark
 from core.hybrid import correr_hybrid
 from core.scoring import calcular_scores_finales, calcular_mejores, calcular_score_categorias, media_armonica, calcular_valor_grafico, _MAPA_CHART, HYBRID_TYPES
 from core.database import guardar_run, guardar_resultados_batch
-from utils.helpers import log, RE_RUNNING
+from utils.helpers import log
 from widgets.legend import crear_chip_leyenda
 
 
@@ -104,18 +104,6 @@ def gestionar_click_auto(win, btn):
         win.btn_auto.set_sensitive(False)
         log(win.text_view_logs_auto, "DETENIENDO ANALISIS...", es_titulo=True)
     else:
-        try:
-            res = win.scx.scx_run(["scxctl", "get"])
-            if not RE_RUNNING.search(res.stdout):
-                win.toast_overlay.add_toast(Adw.Toast.new("Error: scxctl no se está ejecutando. Inicie un planificador primero."))
-                return
-        except FileNotFoundError:
-            win.toast_overlay.add_toast(Adw.Toast.new("Error: scxctl no encontrado."))
-            return
-        except Exception as e:
-            win.toast_overlay.add_toast(Adw.Toast.new(f"Error verificando scxctl: {e}"))
-            return
-
         if win.compatibles is None:
             toast = Adw.Toast.new("Error: Primero verifique la 'Disponibilidad' para evitar bloqueos del sistema.")
             toast.set_priority(Adw.ToastPriority.HIGH)
@@ -292,6 +280,16 @@ def iniciar_auto_test(win, btn):
                     lider_vuelo = max(scores_parciales, key=scores_parciales.get)
                     GLib.idle_add(win.fila_ganador.set_title, f"Mejor Equilibrio: {lider_vuelo}")
 
+        # Guardar resultados siempre que haya datos (parciales o completos)
+        if brutos:
+            run_type = "auto" if win.en_proceso_auto else "auto_parcial"
+            run_id = guardar_run(win.versiones, run_type=run_type)
+            all_results = []
+            for sc_name, sc_tests in brutos.items():
+                for test_type, res in sc_tests.items():
+                    all_results.append(res)
+            guardar_resultados_batch(run_id, all_results)
+
         if win.en_proceso_auto:
             if brutos:
                 log(win.text_view_logs_auto, "-" * 50)
@@ -299,14 +297,6 @@ def iniciar_auto_test(win, btn):
                 log(win.text_view_logs_auto, "Buscando el mejor equilibrio entre rendimiento bruto y agilidad.")
 
                 scores_finales = calcular_scores_finales(brutos)
-
-                # Guardar todos los resultados en historial
-                run_id = guardar_run(win.versiones, run_type="auto")
-                all_results = []
-                for sc_name, sc_tests in brutos.items():
-                    for test_type, res in sc_tests.items():
-                        all_results.append(res)
-                guardar_resultados_batch(run_id, all_results)
 
                 for sc, data in scores_finales.items():
                     log(win.text_view_logs_auto, f"• {sc.upper().ljust(8)} | Score: {data['score']:.1f}% (Pot: {data['pot']/100:.2f}, Resp: {data['resp']/100:.2f}, Flz: {data['flu']/100:.2f})")
@@ -322,6 +312,7 @@ def iniciar_auto_test(win, btn):
             else:
                 GLib.idle_add(lambda: finalizar_auto_test(win, None))
         else:
+            log(win.text_view_logs_auto, f"ANÁLISIS DETENIDO — {len(all_results)} resultado(s) guardado(s)", True)
             GLib.idle_add(lambda: finalizar_auto_test(win, None))
 
     threading.Thread(target=motor, daemon=True).start()

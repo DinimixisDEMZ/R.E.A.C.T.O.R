@@ -38,7 +38,15 @@ def main():
 
     # 3. Verificar stress-ng (advertencia, no crítico)
     if not shutil.which("stress-ng"):
-        advertencias.append("stress-ng no encontrado. Los benchmarks no funcionarán. Instálalo con tu gestor de paquetes.")
+        advertencias.append("stress-ng no encontrado. Los benchmarks de estrés no funcionarán. Instálalo con tu gestor de paquetes.")
+
+    # 4. Verificar hyperfine (advertencia, no crítico)
+    if not shutil.which("hyperfine"):
+        advertencias.append("hyperfine no encontrado. Las pruebas de latencia no funcionarán. Instálalo con: sudo eopkg install hyperfine")
+
+    # 5. Verificar lscpu (advertencia, no crítico)
+    if not shutil.which("lscpu"):
+        advertencias.append("lscpu no encontrado. La información detallada de CPU no estará disponible.")
 
     for adv in advertencias:
         print(f"⚠️  Advertencia: {adv}")
