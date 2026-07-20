@@ -16,7 +16,7 @@ try:
 except ImportError:
     _HAS_CAIRO = False
 
-from utils.helpers import generar_color_hash
+from utils.helpers import generar_color_hash, obtener_color_tema
 
 
 class GraficoComparativo(Gtk.DrawingArea):
@@ -46,6 +46,7 @@ class GraficoComparativo(Gtk.DrawingArea):
         self.anim_tick = 0
         self._hover_x = 0.0
         self._hover_y = 0.0
+        self._pulse_active = False
 
         ev_motion = Gtk.EventControllerMotion()
         ev_motion.connect("motion", self.on_mouse_move)
@@ -74,6 +75,10 @@ class GraficoComparativo(Gtk.DrawingArea):
             return True
 
         cambio = False
+
+        if self._pulse_active:
+            cambio = True
+
         for s, puntos in self.datos_raw.items():
             for i in range(self.num_categorias):
                 if self.max_por_categoria[i] <= 0:
@@ -115,8 +120,20 @@ class GraficoComparativo(Gtk.DrawingArea):
         return True
 
     def _get_fg(self):
+        accent = obtener_color_tema("accent_color")
         if Adw.StyleManager.get_default().get_dark():
-            return 1.0, 1.0, 1.0
+            return accent or (1.0, 1.0, 1.0)
+        else:
+            return accent or (0.1, 0.1, 0.1)
+
+    def iniciar_pulso(self):
+        self._pulse_active = True
+        self._pulse_t = 0.0
+
+    def detener_pulso(self):
+        self._pulse_active = False
+        self._pulse_t = 0.0
+        self.queue_draw()
         return 0.0, 0.0, 0.0
 
     def on_mouse_move(self, controller, x, y):
@@ -301,6 +318,26 @@ class GraficoComparativo(Gtk.DrawingArea):
         cr.set_source_rgba(tr, tg, tb, 0.15)
         cr.arc(cx, cy, 3, 0, 2 * math.pi)
         cr.fill()
+
+        if self._pulse_active:
+            p = 0.5 + 0.5 * math.sin(self.anim_tick * 0.04)
+            steps = 24
+            for i in range(steps, 0, -1):
+                r = radio * i / steps
+                alpha = p * 0.2 * (1.0 - i / steps)
+                if alpha < 0.001:
+                    continue
+                cr.set_source_rgba(tr, tg, tb, alpha)
+                for j in range(n + 1):
+                    ang = (2 * math.pi * (j % n) / n) - math.pi / 2
+                    px = cx + math.cos(ang) * r
+                    py = cy + math.sin(ang) * r
+                    if j == 0:
+                        cr.move_to(px, py)
+                    else:
+                        cr.line_to(px, py)
+                cr.close_path()
+                cr.fill()
 
         if self.highlight_sc:
             self._dibujar_tooltip(cr, width, height, tr, tg, tb, 1.0)

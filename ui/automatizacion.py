@@ -117,6 +117,7 @@ def gestionar_click_auto(win, btn):
 def iniciar_auto_test(win, btn):
     """Inicia el ciclo completo de detección automatizada."""
     win.en_proceso_auto = True
+    win.grafico.iniciar_pulso()
     win.btn_auto.set_label("Detener")
     win.btn_auto.add_css_class("destructive-action")
     win.btn_auto.remove_css_class("suggested-action")
@@ -386,6 +387,7 @@ def finalizar_auto_test_success(win):
 def finalizar_auto_test(win, winner):
     """Restaura la UI tras finalizar la detección automática."""
     win.en_proceso_auto = False
+    win.grafico.detener_pulso()
     win.btn_auto.set_label("Determinar")
     win.btn_auto.set_sensitive(True)
     win.btn_auto.add_css_class("suggested-action")

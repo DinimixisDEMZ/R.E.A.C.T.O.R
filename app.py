@@ -23,11 +23,11 @@ from widgets.password_dialog import DialogoPassword
 
 
 class VentanaSimple(Adw.ApplicationWindow):
-    """Ventana principal de la aplicación Scheduler."""
+    """Ventana principal de la aplicación Reactor."""
 
     def __init__(self, app):
         super().__init__(application=app)
-        self.set_title("Scheduler")
+        self.set_title("Reactor")
         self.set_default_size(850, 850)
 
         # Libadwaita maneja el tema
@@ -131,7 +131,7 @@ class VentanaSimple(Adw.ApplicationWindow):
 
     def setup_sidebar(self):
         """Construye la barra lateral de navegación."""
-        pag_sidebar = Adw.NavigationPage(title="Scheduler", tag="sidebar")
+        pag_sidebar = Adw.NavigationPage(title="Reactor", tag="sidebar")
         header_side = Adw.HeaderBar()
 
         # Sensor Térmico
@@ -222,7 +222,7 @@ class VentanaSimple(Adw.ApplicationWindow):
     def mostrar_acerca_de(self, btn):
         """Muestra el diálogo Acerca De."""
         dialogo = Adw.AboutDialog(
-            application_name="Scheduler",
+            application_name="Reactor",
             version="7.0.0",
             developer_name="DinimixisDEMZ | UNHARMET",
             developers=[

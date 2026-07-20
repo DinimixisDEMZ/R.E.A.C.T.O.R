@@ -20,6 +20,8 @@ try:
 except ImportError:
     _HAS_CAIRO = False
 
+from utils.helpers import obtener_color_tema
+
 
 # ── Helpers de Formateo y Parsing ─────────────────────────────────────────────
 
@@ -280,21 +282,22 @@ class RadarChart(Gtk.DrawingArea):
 
     def _get_theme_colors(self):
         is_dark = Adw.StyleManager.get_default().get_dark()
+        accent = obtener_color_tema("accent_color")
         if is_dark:
             return {
-                "accent": (0.30, 0.60, 0.95),  # Azul neón moderno
-                "grid": (0.28, 0.32, 0.40),    # Rejilla translúcida
-                "bg": (0.11, 0.12, 0.15),      # Fondo de tarjeta oscuro
-                "text": (0.95, 0.96, 0.98),    # Blanco tenue
-                "subtext": (0.55, 0.60, 0.70)  # Gris atenuado
+                "accent": accent or (0.30, 0.60, 0.95),
+                "grid": (0.28, 0.32, 0.40),
+                "bg": (0.11, 0.12, 0.15),
+                "text": (0.95, 0.96, 0.98),
+                "subtext": (0.55, 0.60, 0.70)
             }
         else:
             return {
-                "accent": (0.15, 0.45, 0.80),  # Azul clásico
-                "grid": (0.75, 0.78, 0.83),    # Rejilla gris claro
-                "bg": (0.95, 0.96, 0.97),      # Fondo tarjeta claro
-                "text": (0.10, 0.12, 0.15),    # Negro oscuro
-                "subtext": (0.45, 0.50, 0.55)  # Gris medio
+                "accent": accent or (0.15, 0.45, 0.80),
+                "grid": (0.75, 0.78, 0.83),
+                "bg": (0.95, 0.96, 0.97),
+                "text": (0.10, 0.12, 0.15),
+                "subtext": (0.45, 0.50, 0.55)
             }
 
     def set_data(self, values: list[float], labels: list[str], raw_values: list = None):

@@ -87,3 +87,28 @@ def obtener_color_css(name):
     """Devuelve un string CSS 'rgb(...)' basado en el nombre del scheduler."""
     r, g, b = generar_color_hash(name)
     return f"rgb({int(r*255)}, {int(g*255)}, {int(b*255)})"
+
+
+def _linear_to_srgb(v):
+    """Convierte un valor de color de espacio lineal a sRGB."""
+    if v <= 0.0031308:
+        return v * 12.92
+    return 1.055 * (v ** (1.0 / 2.4)) - 0.055
+
+
+def obtener_color_tema(nombre):
+    """Obtiene un color del tema Adwaita activo como tupla (r, g, b) en sRGB.
+    
+    Acepta: accent_color, success_color, error_color, warning_color, etc.
+    Retorna None si el color no existe en el tema.
+    """
+    from gi.repository import Gtk
+    label = Gtk.Label()
+    ctx = label.get_style_context()
+    found, rgba = ctx.lookup_color(nombre)
+    if not found:
+        return None
+    r = min(1.0, max(0.0, _linear_to_srgb(rgba.red)))
+    g = min(1.0, max(0.0, _linear_to_srgb(rgba.green)))
+    b = min(1.0, max(0.0, _linear_to_srgb(rgba.blue)))
+    return (r, g, b)

@@ -18,6 +18,16 @@ import json
 from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
 
 
+def _a_microsegundos(valor, unidad):
+    if unidad == 's':
+        return valor * 1_000_000
+    elif unidad == 'ms':
+        return valor * 1_000
+    elif unidad == 'us':
+        return valor
+    return valor
+
+
 def _ejecutar_hybrid_cmd(cmd, tv_log=None, logs=True, timeout=60):
     """Ejecuta un comando hyperfine y devuelve (resultado_dict, elapsed)."""
     if logs and tv_log:
