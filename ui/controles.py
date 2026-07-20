@@ -9,6 +9,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
+from core.database import activar_db_temporal, desactivar_db_temporal
+
 
 def setup_controles_ui(win):
     """Construye la interfaz de la pestaña Controles.
@@ -47,7 +49,12 @@ def setup_controles_ui(win):
     def _toggle_dev(sw, ps):
         win.modo_desarrollador = sw.get_active()
         win.scx.modo_desarrollador = win.modo_desarrollador
-        est = "ACTIVADO" if win.modo_desarrollador else "DESACTIVADO"
+        if win.modo_desarrollador:
+            activar_db_temporal()
+            est = "ACTIVADO"
+        else:
+            desactivar_db_temporal()
+            est = "DESACTIVADO"
         win.toast_overlay.add_toast(Adw.Toast.new(f"Modo Desarrollador: {est}"))
         win.sincronizar_sistema()
 
@@ -88,6 +95,9 @@ def ejecutar_mantenimiento(win, btn, acc):
                     item = win.combo_schedulers.get_selected_item()
                     if item:
                         cmd_base += ["-s", item.get_string()]
+                    modo_item = win.combo_modos.get_selected_item()
+                    if modo_item:
+                        cmd_base += ["-m", modo_item.get_string()]
 
                 result = win.scx.ejecutar_con_sudo(cmd_base)
 

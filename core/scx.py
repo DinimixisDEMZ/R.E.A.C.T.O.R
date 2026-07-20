@@ -35,6 +35,11 @@ class ScxManager:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="OK (Simulated)", stderr="")
         return subprocess.run(args, capture_output=capture, text=True)
 
+    def detener_todos(self):
+        """Detiene todos los schedulers activos y mata procesos scx_."""
+        self.ejecutar_con_sudo(["scxctl", "stop"])
+        self.ejecutar_con_sudo(["pkill", "-9", "-f", "scx_"])
+
     def ejecutar_con_sudo(self, cmd_list):
         """Wrapper seguro: Intenta usar sudo con la sesión activa."""
         if self.modo_desarrollador:

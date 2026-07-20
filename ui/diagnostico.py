@@ -8,7 +8,6 @@ import json
 import math
 import subprocess
 import time
-import os
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -453,7 +452,8 @@ class RadarChart(Gtk.DrawingArea):
             cr.show_text(label)
 
             # Valor (arriba de la barra)
-            val_str = self._labels[i] if i < len(self._labels) else ""
+            raw = self._raw_values[i] if i < len(self._raw_values) else 0
+            val_str = f"{raw:.0f}" if raw else ""
             cr.set_font_size(9.0)
             ext_v = cr.text_extents(val_str)
             cr.set_source_rgba(*colors["text"], 0.8 * ta * prog)

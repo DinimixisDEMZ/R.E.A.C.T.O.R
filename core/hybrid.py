@@ -9,7 +9,6 @@ hyperfine ofrece:
 """
 
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -17,47 +16,6 @@ import time
 import json
 
 from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
-
-
-def _parsear_hybrid_output(stdout):
-    """Extrae tiempo medio y desviación estándar de la salida de hyperfine.
-    
-    Busca líneas como:
-      Time (mean ± σ):     340.0 µs ± 140.5 µs
-      Time (mean ± σ):       1.234 s ±   0.056 s
-    
-    Returns:
-        dict con mean_us, std_us, min_us, max_us — o None si falla.
-    """
-    resultado = {}
-    
-    for linea in stdout.splitlines():
-        m = re.search(r'Time\s*\(mean\s*±\s*[σs]\):\s*([\d.]+)\s*(µs|ms|s)\s*±\s*([\d.]+)\s*(µs|ms|s)', linea)
-        if m:
-            resultado['mean'] = _a_microsegundos(float(m.group(1)), m.group(2))
-            resultado['std'] = _a_microsegundos(float(m.group(3)), m.group(4))
-        
-        m2 = re.search(r'Range\s*\(min\s*[.…]+\s*max\):\s*([\d.]+)\s*(µs|ms|s)\s*[.…]+\s*([\d.]+)\s*(µs|ms|s)', linea)
-        if m2:
-            resultado['min'] = _a_microsegundos(float(m2.group(1)), m2.group(2))
-            resultado['max'] = _a_microsegundos(float(m2.group(3)), m2.group(4))
-        
-        m3 = re.search(r'(\d+)\s+runs', linea)
-        if m3:
-            resultado['runs'] = int(m3.group(1))
-    
-    return resultado if resultado.get('mean') is not None else None
-
-
-def _a_microsegundos(valor, unidad):
-    """Convierte un valor con unidad a microsegundos."""
-    if unidad == 'µs':
-        return valor
-    elif unidad == 'ms':
-        return valor * 1000.0
-    elif unidad == 's':
-        return valor * 1_000_000.0
-    return valor
 
 
 def _ejecutar_hybrid_cmd(cmd, tv_log=None, logs=True, timeout=60):
@@ -134,19 +92,24 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
         
         # ── Modo Desarrollador ──
         if modo_dev:
-            import random
             time.sleep(0.5)
-            fake_val = random.uniform(50, 500)
-            fake_std = random.uniform(20, 200)
+            seed = hash((sc_act, tipo)) % 1000
+            base = {
+                "fork": {"val": 150, "std": 40},
+                "exec": {"val": 250, "std": 60},
+                "pipe": {"val": 200, "std": 50},
+                "syscall": {"val": 180, "std": 45},
+            }.get(tipo, {"val": 200, "std": 50})
+            factor = 0.8 + (seed % 40) / 100.0
             return {
                 "tipo": f"latencia_{tipo}",
-                "valor": fake_val,
-                "p95": fake_std,
-                "fairness": random.uniform(0.01, 0.15),
+                "valor": base["val"] * factor,
+                "p95": base["std"] * factor,
+                "fairness": 0.05 + (seed % 10) / 1000.0,
                 "sched": sc_act if sc_act != "Sistema Base" else "scx_rusty",
                 "modo": modo_act,
-                "mean_us": fake_val,
-                "std_us": fake_std,
+                "mean_us": base["val"] * factor,
+                "std_us": base["std"] * factor,
                 "runs": 100
             }
         

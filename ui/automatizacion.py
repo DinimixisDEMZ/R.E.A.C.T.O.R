@@ -217,8 +217,7 @@ def iniciar_auto_test(win, btn):
                 time.sleep(1)
             else:
                 log(win.text_view_logs_auto, f"Limpiando para {sc}...")
-                win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-                win.scx.ejecutar_con_sudo(["pkill", "-9", "-f", "scx_"])
+                win.scx.detener_todos()
                 time.sleep(2)
 
                 log(win.text_view_logs_auto, f"Activando {sc}...", es_titulo=True)
@@ -281,10 +280,10 @@ def iniciar_auto_test(win, btn):
                     GLib.idle_add(win.fila_ganador.set_title, f"Mejor Equilibrio: {lider_vuelo}")
 
         # Guardar resultados siempre que haya datos (parciales o completos)
+        all_results = []
         if brutos:
             run_type = "auto" if win.en_proceso_auto else "auto_parcial"
             run_id = guardar_run(win.versiones, run_type=run_type)
-            all_results = []
             for sc_name, sc_tests in brutos.items():
                 for test_type, res in sc_tests.items():
                     all_results.append(res)

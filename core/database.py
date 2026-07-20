@@ -11,6 +11,7 @@ from pathlib import Path
 
 _DB_DIR = Path.home() / ".local" / "share" / "scxctl"
 _DB_PATH = _DB_DIR / "history.db"
+_db_temp = None
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -63,12 +64,43 @@ def _cmd_output(cmd, timeout=3):
 
 
 def _get_conn():
+    global _db_temp
+    if _db_temp is not None:
+        return _db_temp
     _DB_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH))
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _close_conn(conn):
+    global _db_temp
+    if conn is not _db_temp:
+        conn.close()
+
+
+def activar_db_temporal():
+    global _db_temp
+    if _db_temp is not None:
+        return
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.row_factory = sqlite3.Row
+    for stmt in _SCHEMA_SQL.split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            conn.execute(stmt)
+    conn.commit()
+    _db_temp = conn
+
+
+def desactivar_db_temporal():
+    global _db_temp
+    if _db_temp is not None:
+        _db_temp.close()
+        _db_temp = None
 
 
 def obtener_versiones():
@@ -85,7 +117,7 @@ def inicializar_db():
     try:
         conn.executescript(_SCHEMA_SQL)
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def guardar_run(versiones, run_type="manual"):
@@ -101,7 +133,7 @@ def guardar_run(versiones, run_type="manual"):
         conn.commit()
         return run_id
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def guardar_resultado(run_id, result):
@@ -116,7 +148,7 @@ def guardar_resultado(run_id, result):
         )
         conn.commit()
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def guardar_resultados_batch(run_id, results):
@@ -130,7 +162,7 @@ def guardar_resultados_batch(run_id, results):
         )
         conn.commit()
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def consultar_historial(scheduler=None, test_type=None, date_from=None, date_to=None, limit=200):
@@ -157,7 +189,7 @@ def consultar_historial(scheduler=None, test_type=None, date_from=None, date_to=
         rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def consultar_tendencia(test_type, days=30):
@@ -172,7 +204,7 @@ def consultar_tendencia(test_type, days=30):
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def obtener_schedulers_historial():
@@ -183,7 +215,7 @@ def obtener_schedulers_historial():
         ).fetchall()
         return [r["scheduler_name"] for r in rows]
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def contar_resultados():
@@ -192,7 +224,7 @@ def contar_resultados():
         row = conn.execute("SELECT COUNT(*) as total FROM results").fetchone()
         return row["total"]
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def detectar_cambio_version(versiones):
@@ -200,7 +232,7 @@ def detectar_cambio_version(versiones):
     try:
         row = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
     finally:
-        conn.close()
+        _close_conn(conn)
     if not row:
         return False, None
     cambios = []
@@ -220,7 +252,7 @@ def eliminar_historial():
         conn.execute("DELETE FROM runs")
         conn.commit()
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def guardar_compatibilidad(nombre, kernel, compatible, mensaje):
@@ -235,7 +267,7 @@ def guardar_compatibilidad(nombre, kernel, compatible, mensaje):
         )
         conn.commit()
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def cargar_compatibilidad(kernel):
@@ -248,7 +280,7 @@ def cargar_compatibilidad(kernel):
         ).fetchall()
         return {r["scheduler_name"]: (bool(r["is_compatible"]), r["message"], r["timestamp"]) for r in rows}
     finally:
-        conn.close()
+        _close_conn(conn)
 
 
 def limpiar_compatibilidad():
@@ -257,4 +289,16 @@ def limpiar_compatibilidad():
         conn.execute("DELETE FROM compatibility")
         conn.commit()
     finally:
-        conn.close()
+        _close_conn(conn)
+
+
+def obtener_historial_compatibilidad():
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT scheduler_name, kernel_version, is_compatible, message, timestamp "
+            "FROM compatibility ORDER BY timestamp DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        _close_conn(conn)

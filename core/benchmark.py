@@ -12,7 +12,6 @@ import os
 import subprocess
 import time
 import tempfile
-import random
 
 from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
 
@@ -84,14 +83,19 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         # ── Modo Desarrollador: Datos simulados ──
         if modo_dev:
             time.sleep(0.5)
-            fake_val = random.uniform(5000, 15000)
-            fake_p95 = random.uniform(1.5, 25.0)
-            fake_fair = random.uniform(0.01, 0.2)
+            seed = hash((sc_act, tipo)) % 1000
+            base = {
+                "cpu": {"val": 8500, "p95": 5.0, "fair": 0.08},
+                "threads": {"val": 10000, "p95": 8.0, "fair": 0.05},
+                "memory": {"val": 12000, "p95": 3.5, "fair": 0.12},
+                "disk": {"val": 6000, "p95": 12.0, "fair": 0.15},
+            }.get(tipo, {"val": 9000, "p95": 6.0, "fair": 0.10})
+            factor = 0.9 + (seed % 200) / 1000.0
             return {
                 "tipo": tipo,
-                "valor": fake_val,
-                "p95": fake_p95,
-                "fairness": fake_fair,
+                "valor": base["val"] * factor,
+                "p95": base["p95"] * (0.8 + (seed % 40) / 100.0),
+                "fairness": base["fair"] * (0.9 + (seed % 20) / 100.0),
                 "sched": sc_act if sc_act != "Sistema Base" else "scx_rusty",
                 "modo": modo_act
             }

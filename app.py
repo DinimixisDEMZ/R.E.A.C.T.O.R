@@ -90,6 +90,26 @@ class VentanaSimple(Adw.ApplicationWindow):
             .pulse-warning {
                 animation: pulse_warning 2.5s infinite;
             }
+            .chip {
+                border-radius: 12px;
+                padding: 4px 10px;
+                margin: 2px;
+            }
+            .history-group {
+                padding: 0;
+            }
+            .chip.success {
+                background: alpha(@success_color, 0.15);
+                color: @success_color;
+            }
+            .chip.error {
+                background: alpha(@error_color, 0.15);
+                color: @error_color;
+            }
+            .chip.warning {
+                background: alpha(@warning_color, 0.15);
+                color: @warning_color;
+            }
         """, -1)
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(),
@@ -158,9 +178,7 @@ class VentanaSimple(Adw.ApplicationWindow):
         self.agregar_opcion(self.lista_nav, "Diagnóstico", "sonar-symbolic", self.pag_diagnostico)
         self.agregar_opcion(self.lista_nav, "Historial", "document-open-recent-symbolic", self.pag_historial)
 
-        kernel_actual = self.versiones.get("kernel", "")
-        cache_compat = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
-        if not cache_compat:
+        if not self.compatibles:
             self.nav_disponibilidad.add_css_class("pulse-warning")
 
         view_side = Adw.ToolbarView(content=self.lista_nav)

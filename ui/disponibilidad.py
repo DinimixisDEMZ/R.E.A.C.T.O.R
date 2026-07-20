@@ -11,19 +11,54 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from utils.helpers import log, limpiar_texto
-from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad
+from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad, obtener_historial_compatibilidad
+
+
+def _mensaje_corto(msg, compatible):
+    if not msg:
+        return "OK" if compatible else "Sin verificar"
+    ml = msg.lower()
+    if compatible:
+        if "verificado" in ml: return "Verificado"
+        if "residente" in ml: return "Residente"
+        if "shutdown" in ml: return "Shutdown"
+        if "simulado" in ml: return "Simulado"
+        return "OK"
+    if "failed to load bpf" in ml or "bpf" in ml: return "BPF failed"
+    if "no such file" in ml: return "BPF missing"
+    if "error de salida" in ml:
+        idx = msg.find("(")
+        return "Error " + msg[idx:idx+6].strip() if idx >= 0 else "Error"
+    if "error" in ml: return "Error"
+    return msg[:10] + "…" if len(msg) > 10 else msg
+
+
+def _simplificar_kernel(kv):
+    return kv.split("-")[0] if kv else kv
+
+
+def _fade_in(widget, duration_ms=200):
+    """Anima la opacidad de un widget de 0 a 1."""
+    widget.set_opacity(0.0)
+    steps = 10
+    interval = max(duration_ms // steps, 10)
+    state = {"step": 0}
+
+    def _tick():
+        state["step"] += 1
+        widget.set_opacity(state["step"] / steps)
+        return state["step"] < steps
+
+    GLib.timeout_add(interval, _tick)
 
 
 def setup_disponibilidad_ui(win):
-    """Construye la interfaz de la pestaña Disponibilidad.
-    
-    Args:
-        win: Instancia de VentanaSimple
-    """
+    """Construye la interfaz de la pestaña Disponibilidad."""
     win._disp_filas = {}
     win._verificando = False
 
     pref_page = Adw.PreferencesPage()
+    win._disp_pref_page = pref_page
 
     grupo = Adw.PreferencesGroup(
         title="Compatibilidad de Planificadores",
@@ -64,7 +99,9 @@ def setup_disponibilidad_ui(win):
                 icono.set_from_icon_name("dialog-error-symbolic")
                 icono.remove_css_class("dim-label")
                 icono.add_css_class("error")
-            row.set_subtitle(mensaje or ("Disponible" if compatible else "No disponible"))
+            row.set_subtitle(_mensaje_corto(mensaje, compatible))
+            if mensaje:
+                row.set_tooltip_text(mensaje)
         else:
             row.set_subtitle("Sin verificar")
 
@@ -73,7 +110,8 @@ def setup_disponibilidad_ui(win):
 
     pref_page.add(grupo)
 
-    grupo_logs_disp = Adw.PreferencesGroup(title="Registro de Verificación")
+    # ── Registro de Verificación ──
+    win._disp_grupo_logs = Adw.PreferencesGroup(title="Registro de Verificación")
     win.expander_logs_disp = Adw.ExpanderRow(title="Terminal de Diagnóstico", subtitle="Salida técnica de los binarios BPF", icon_name="utilities-terminal-symbolic")
 
     win.text_view_logs_disp = Gtk.TextView(editable=False, cursor_visible=False, monospace=True, css_classes=["card"])
@@ -82,9 +120,13 @@ def setup_disponibilidad_ui(win):
     scrolled_disp.set_child(win.text_view_logs_disp)
     caja_log_disp.append(scrolled_disp)
     win.expander_logs_disp.add_row(caja_log_disp)
-    grupo_logs_disp.add(win.expander_logs_disp)
+    win._disp_grupo_logs.add(win.expander_logs_disp)
 
-    pref_page.add(grupo_logs_disp)
+    pref_page.add(win._disp_grupo_logs)
+
+    # ── Historial de Compatibilidad por Kernel ──
+    win._disp_grupo_historial = None
+    _refrescar_historial_compat(win)
 
     header = Adw.HeaderBar()
     win._btn_verificar_disp = Gtk.Button(
@@ -113,7 +155,8 @@ def _actualizar_fila(r, s, i, ok, texto, warn):
     """Actualiza el estado visual de una fila de scheduler."""
     s.set_visible(False)
     i.set_visible(True)
-    r.set_subtitle(texto)
+    r.set_subtitle(_mensaje_corto(texto, ok))
+    r.set_tooltip_text(texto)
     for cls in ["success", "error", "dim-label", "warning"]:
         i.remove_css_class(cls)
 
@@ -134,12 +177,108 @@ def _limpiar_cache(win):
     limpiar_compatibilidad()
     for nombre, (row, spinner, icono) in win._disp_filas.items():
         row.set_subtitle("Sin verificar")
+        row.set_tooltip_text("")
         icono.set_from_icon_name("dialog-question-symbolic")
         icono.remove_css_class("success")
         icono.remove_css_class("error")
         icono.remove_css_class("warning")
         icono.add_css_class("dim-label")
+    _refrescar_historial_compat(win)
     log(win.text_view_logs_disp, "Caché de compatibilidad limpiada", True)
+
+
+def _refrescar_historial_compat(win):
+    """Refresca el historial de compatibilidad por kernel."""
+    if win._disp_grupo_historial is not None:
+        if win._disp_grupo_historial.get_parent():
+            win._disp_pref_page.remove(win._disp_grupo_historial)
+    if win._disp_grupo_logs is not None and win._disp_grupo_logs.get_parent():
+        win._disp_pref_page.remove(win._disp_grupo_logs)
+
+    win._disp_grupo_historial = Adw.PreferencesGroup(title="Historial de Compatibilidad")
+    win._disp_grupo_historial.add_css_class("history-group")
+
+    datos = obtener_historial_compatibilidad()
+    lookup = {}
+    for d in datos:
+        lookup[(d["scheduler_name"], d["kernel_version"])] = d
+
+    scheds = sorted(win._disp_filas.keys())
+    if not scheds:
+        try:
+            scheds = sorted(win.scx.obtener_lista())
+        except Exception:
+            scheds = sorted(set(d["scheduler_name"] for d in datos))
+
+    agregados = []
+    for sched in scheds:
+        sched_data = [d for d in datos if d["scheduler_name"] == sched]
+        if not sched_data:
+            continue
+        total = len(sched_data)
+        ok_count = sum(1 for d in sched_data if d["is_compatible"])
+
+        if ok_count == total:
+            sub = f"{total}/{total} verificados"
+        elif ok_count == 0:
+            sub = f"{total}/{total} fallidos"
+        else:
+            sub = f"{ok_count}/{total} verificados"
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbl_name = Gtk.Label(label=sched, xalign=0, css_classes=["heading"])
+        box.append(lbl_name)
+        lbl_sub = Gtk.Label(label=sub, xalign=0, css_classes=["caption", "dim-label"])
+        _fade_in(lbl_sub, 300)
+        box.append(lbl_sub)
+
+        chips_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4, margin_top=4)
+
+        for kv in sorted(set(d["kernel_version"] for d in sched_data)):
+            entry = lookup.get((sched, kv))
+            if entry is None:
+                continue
+
+            compatible = entry["is_compatible"]
+            msg = entry.get("message", "")
+            korto = _mensaje_corto(msg, compatible)
+            kv_brief = _simplificar_kernel(kv)
+
+            if compatible:
+                css_bg = "success"
+                icon_name = "emblem-ok-symbolic"
+            else:
+                css_bg = "error"
+                icon_name = "dialog-error-symbolic"
+
+            chip = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+            chip.add_css_class("chip")
+            chip.add_css_class(css_bg)
+            chip.set_tooltip_text(f"{sched} @ {kv}\n{korto}: {msg}")
+
+            icon = Gtk.Image.new_from_icon_name(icon_name)
+            icon.set_pixel_size(14)
+            chip.append(icon)
+            chip.append(Gtk.Label(label=kv_brief))
+
+            _fade_in(chip, 400)
+            chips_box.append(chip)
+
+        box.append(chips_box)
+        win._disp_grupo_historial.add(box)
+        agregados.append(sched)
+        if len(agregados) > 1:
+            sep = Gtk.Separator(margin_top=4, margin_bottom=4)
+            sep.set_visible(True)
+            win._disp_grupo_historial.add(sep)
+
+    if not agregados:
+        lbl = Gtk.Label(label="Esperando datos…", css_classes=["dim-label", "caption"], margin_top=8, margin_bottom=8)
+        _fade_in(lbl, 400)
+        win._disp_grupo_historial.add(lbl)
+
+    win._disp_pref_page.add(win._disp_grupo_logs)
+    win._disp_pref_page.add(win._disp_grupo_historial)
 
 
 def iniciar_verificacion(win, btn=None):
@@ -155,21 +294,21 @@ def iniciar_verificacion(win, btn=None):
             log(win.text_view_logs_disp, "INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF", True)
 
             # Limpieza nuclear preventiva
-            win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-            win.scx.ejecutar_con_sudo(["pkill", "-9", "-f", "scx_"])
+            win.scx.detener_todos()
             time.sleep(1.5)
 
             for nombre, (row, spinner, icono) in list(win._disp_filas.items()):
                 if win.modo_desarrollador:
-                    import random
                     time.sleep(0.1)
-                    disponible = random.choice([True, True, True, False])
+                    hash_val = hash(nombre) % 100
+                    disponible = hash_val < 75
                     msg = "Disponible (Simulado)" if disponible else "Error: Programa incompatible (Simulado)"
                     is_warn = False
                     if disponible:
                         lista_exitosos.append(nombre)
 
-                    guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg)
+                    kv_sim = win.versiones.get("kernel", "7.1.3-347.current")
+                    guardar_compatibilidad(nombre, kv_sim, disponible, msg)
                     GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg, w=is_warn:
                                   _actualizar_fila(r, s, i, ok, t, w))
                     continue
@@ -185,8 +324,7 @@ def iniciar_verificacion(win, btn=None):
                 msg = "Desconocido"
 
                 try:
-                    win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-                    win.scx.ejecutar_con_sudo(["pkill", "-9", "-f", "scx_"])
+                    win.scx.detener_todos()
                     time.sleep(0.3)
 
                     log(win.text_view_logs_disp, f"Probando scx_{nombre}...")
@@ -240,6 +378,7 @@ def iniciar_verificacion(win, btn=None):
 
             log(win.text_view_logs_disp, "VERIFICACIÓN FINALIZADA", True)
             win.compatibles = lista_exitosos
+            GLib.idle_add(lambda: _refrescar_historial_compat(win))
 
             def _update_badge():
                 win.nav_disponibilidad.remove_css_class("pulse-warning")

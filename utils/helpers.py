@@ -14,7 +14,7 @@ from gi.repository import GLib
 # ─── Regex Precompilados ───
 
 RE_RUNNING = re.compile(r"running\s+([\w\.-]+)(?:.*(?:in\s+|\[)([\w-]+)(?:\]|\s+mode)?)?", re.IGNORECASE)
-RE_JSON_ARRAY = re.compile(r'\[.*?\]', re.DOTALL)
+RE_JSON_ARRAY = re.compile(r'\[[\s\S]*\]')
 RE_ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
