@@ -2,36 +2,162 @@
 Pestaña de Rendimiento: Benchmarks manuales, ranking y visualización.
 """
 
+import importlib
+from collections.abc import Mapping
 import threading
 
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib, Gdk
+from gi.repository import Gtk, Adw, GLib
 
 from core.benchmark import correr_benchmark
 from core.hybrid import correr_hybrid
-from core.scoring import calcular_ranking_manual, calcular_valor_grafico, calcular_valor_ranking, _MAPA_CHART, HYBRID_TYPES
-from core.database import guardar_run, guardar_resultado
-from utils.helpers import obtener_color_css
-
-# Cache de CSS providers para no recrear en cada actualización
-_css_providers = {}
+from core.scoring import calcular_ranking_manual, calcular_valor_ranking, HYBRID_TYPES
+from core.database import guardar_run_completo
+from core.operations import OperationCancelled
 
 
-def _obtener_o_crear_provider(nombre_sched, clave_ui):
-    """Obtiene un CSS provider cacheado o crea uno nuevo."""
-    key = f"{nombre_sched}-{clave_ui}"
-    if key not in _css_providers:
-        provider = Gtk.CssProvider()
-        color = obtener_color_css(nombre_sched)
-        css = f"progressbar.progress-{key} > trough > progress {{ background-color: {color}; }}"
-        provider.load_from_data(css, len(css))
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+_TIPOS_MANUALES = (
+    "cpu",
+    "threads",
+    "memory",
+    "latencia_fork",
+    "latencia_compile",
+    "latencia_loaded",
+)
+
+
+def _programar_ui(win, callback, *args):
+    programar = getattr(win, "ejecutar_en_ui", None)
+    if callable(programar):
+        return programar(callback, *args)
+    return GLib.idle_add(callback, *args)
+
+
+def _mostrar_toast(win, mensaje, *, alta=False):
+    mostrar = getattr(win, "mostrar_toast", None)
+    if callable(mostrar):
+        mostrar(mensaje, alta=alta)
+        return
+    toast = Adw.Toast.new(str(mensaje))
+    if alta:
+        toast.set_priority(Adw.ToastPriority.HIGH)
+    win.toast_overlay.add_toast(toast)
+
+
+def _mostrar_operacion_ocupada(win):
+    mostrar = getattr(win, "mostrar_operacion_ocupada", None)
+    if callable(mostrar):
+        mostrar()
+        return
+    state = win.operaciones.state
+    nombre = state.name if state is not None else "otra operación"
+    _mostrar_toast(
+        win,
+        f"Operación ocupada: '{nombre}' sigue en curso.",
+        alta=True,
+    )
+
+
+def _ejecutar_con_handle(handle, operacion):
+    """Ejecuta el worker completo y libera la operación incluso si falla."""
+    try:
+        return operacion(), None
+    except OperationCancelled as exc:
+        return None, exc
+    except Exception as exc:
+        return None, str(exc) or exc.__class__.__name__
+    finally:
+        handle.release()
+
+
+def _nueva_generacion_manual(win):
+    generacion = int(getattr(win, "_manual_generation", 0) or 0) + 1
+    win._manual_generation = generacion
+    return generacion
+
+
+def _resultados_del_modo_actual(win):
+    """Excluye resultados sin procedencia o pertenecientes al otro modo."""
+    modo_actual = bool(getattr(win, "modo_desarrollador", False))
+    resultados = []
+    for resultado in getattr(win, "datos_rendimiento", ()) or ():
+        if not isinstance(resultado, Mapping):
+            continue
+        procedencia = resultado.get("development_mode")
+        if isinstance(procedencia, bool) and procedencia == modo_actual:
+            resultados.append(resultado)
+    return resultados
+
+
+def _correr_y_guardar_benchmark(
+    tipo,
+    scx_manager,
+    log_view,
+    modo_desarrollador,
+    versiones,
+    cancel_token=None,
+):
+    """Ejecuta una prueba y persiste su run completo en una transacción."""
+    if cancel_token is not None:
+        cancel_token.raise_if_cancelled()
+
+    engine_kwargs = {"modo_dev": modo_desarrollador}
+    if cancel_token is not None:
+        engine_kwargs["cancel_token"] = cancel_token
+
+    if tipo in HYBRID_TYPES:
+        result = correr_hybrid(
+            tipo,
+            scx_manager,
+            log_view,
+            **engine_kwargs,
         )
-        _css_providers[key] = provider
-    return _css_providers[key]
+    else:
+        result = correr_benchmark(
+            tipo,
+            scx_manager,
+            log_view,
+            **engine_kwargs,
+        )
+
+    if result is None:
+        if cancel_token is not None:
+            cancel_token.raise_if_cancelled()
+        return None, None
+    if cancel_token is not None and not cancel_token.seal():
+        raise OperationCancelled("El benchmark manual fue cancelado.")
+
+    resultado_persistido = dict(result)
+    resultado_persistido["development_mode"] = bool(modo_desarrollador)
+    run_id = guardar_run_completo(
+        versiones,
+        [resultado_persistido],
+        run_type="manual",
+        metadata={"development_mode": bool(modo_desarrollador)},
+    )
+    resultado_completo = dict(resultado_persistido)
+    resultado_completo["run_id"] = run_id
+    return resultado_completo, run_id
+
+
+def _refrescar_historial_publico(win):
+    """Invoca perezosamente una API pública de historial si está disponible."""
+    callback = getattr(win, "refrescar_historial", None)
+    if callable(callback):
+        callback()
+        return True
+
+    try:
+        historial = importlib.import_module("ui.historial")
+    except ImportError:
+        return False
+    callback = getattr(historial, "refrescar_historial", None)
+    if callable(callback):
+        callback(win)
+        return True
+    return False
 
 
 def setup_rendimiento_ui(win):
@@ -41,15 +167,10 @@ def setup_rendimiento_ui(win):
         win: Instancia de VentanaSimple
     """
     pref_page = Adw.PreferencesPage()
-
-    def crear_grupo(titulo, reseña):
-        grupo = Adw.PreferencesGroup(title=titulo)
-        info = Gtk.Image(icon_name="dialog-information-symbolic", css_classes=["dim-label"], margin_end=6)
-        info.set_tooltip_text(reseña)
-        grupo.set_header_suffix(info)
-        lista = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
-        grupo.add(lista)
-        return grupo, lista
+    win._manual_generation = int(
+        getattr(win, "_manual_generation", 0) or 0
+    )
+    win._manual_development_mode = None
 
     # ── Ranking General ──
     win.grupo_general = Adw.PreferencesGroup(title="Resultados de Ranking")
@@ -95,13 +216,13 @@ def setup_rendimiento_ui(win):
 
     # ── Detalle expandible ──
     win.grupo_detalle = Adw.PreferencesGroup(title="Detalle Comparativa")
-    for clave, titulo, unidad in [
-        ("cpu", "Context Switching", "pts"),
-        ("threads", "Carga Mixta", "ops/s"),
-        ("memory", "Sincronización", "pts"),
-        ("latencia_fork", "Fork+Exec", "µs"),
-        ("latencia_compile", "Compilación Paralela", "µs"),
-        ("latencia_loaded", "Bajo Carga", "µs"),
+    for clave, titulo in [
+        ("cpu", "Context Switching"),
+        ("threads", "Carga Mixta"),
+        ("memory", "Sincronización"),
+        ("latencia_fork", "Fork+Exec"),
+        ("latencia_compile", "Compilación Paralela"),
+        ("latencia_loaded", "Bajo Carga"),
     ]:
         exp = Adw.ExpanderRow(title=titulo, subtitle="Expandir para ver ranking completo")
         exp.add_css_class("boxed-list")
@@ -133,7 +254,7 @@ def setup_rendimiento_ui(win):
 
     # Izquierda: borrar | stress-ng
     btn_borrar = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Limpiar Rankings")
-    btn_borrar.connect("clicked", lambda b: limpiar_ranking(win, b))
+    btn_borrar.connect("clicked", lambda _button: limpiar_ranking(win))
     header.pack_start(btn_borrar)
 
     sep_sn = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
@@ -171,11 +292,22 @@ def setup_rendimiento_ui(win):
 def ejecutar_benchmark(win, btn, tipo):
     """Inicia una prueba de benchmark individual."""
     if win.en_proceso_bench:
+        _mostrar_toast(win, "Ya hay un benchmark manual en curso.")
         return
-    win.en_proceso_bench = True
 
-    win._btn_activo = btn
-    win._icono_original = btn.get_icon_name()
+    handle = win.operaciones.try_acquire(f"benchmark manual ({tipo})")
+    if handle is None:
+        _mostrar_operacion_ocupada(win)
+        return
+
+    icono_original = btn.get_icon_name()
+    scx_manager = win.scx
+    log_view = win.text_view_logs
+    modo_desarrollador = bool(win.modo_desarrollador)
+    versiones = dict(win.versiones)
+    generacion = int(getattr(win, "_manual_generation", 0) or 0)
+
+    win.en_proceso_bench = True
     btn.set_child(Adw.Spinner())
 
     for b in win.btns_bench:
@@ -183,30 +315,107 @@ def ejecutar_benchmark(win, btn, tipo):
     btn.set_sensitive(False)
 
     def tarea():
-        if tipo in HYBRID_TYPES:
-            res = correr_hybrid(tipo, win.scx, win.text_view_logs, modo_dev=win.modo_desarrollador)
-        else:
-            res = correr_benchmark(tipo, win.scx, win.text_view_logs, modo_dev=win.modo_desarrollador)
-        if res:
-            GLib.idle_add(_on_resultado, res)
-        GLib.idle_add(lambda: finalizar_bench(win))
+        payload, error = _ejecutar_con_handle(
+            handle,
+            lambda: _correr_y_guardar_benchmark(
+                tipo,
+                scx_manager,
+                log_view,
+                modo_desarrollador,
+                versiones,
+                cancel_token=handle.token,
+            ),
+        )
+        _programar_ui(
+            win,
+            _finalizar_benchmark,
+            win,
+            btn,
+            icono_original,
+            payload,
+            generacion,
+            modo_desarrollador,
+            error,
+        )
 
-    def _on_resultado(res):
-        win.datos_rendimiento.append(res)
-        run_id = guardar_run(win.versiones, run_type="manual")
-        guardar_resultado(run_id, res)
+    try:
+        threading.Thread(target=tarea).start()
+    except Exception as exc:
+        handle.release()
+        finalizar_bench(win, btn, icono_original)
+        _mostrar_toast(
+            win,
+            f"No se pudo iniciar el benchmark: {exc}",
+            alta=True,
+        )
+
+
+def _finalizar_benchmark(
+    win,
+    btn,
+    icono_original,
+    payload,
+    generacion,
+    modo_desarrollador,
+    error,
+):
+    try:
+        if (
+            generacion != getattr(win, "_manual_generation", 0)
+            or modo_desarrollador
+            != bool(getattr(win, "modo_desarrollador", False))
+        ):
+            return
+        if isinstance(error, OperationCancelled):
+            _mostrar_toast(win, "Benchmark manual cancelado.")
+            return
+        if error is not None:
+            _mostrar_toast(win, f"Error en el benchmark: {error}", alta=True)
+            return
+
+        result, run_id = payload
+        if result is None:
+            _mostrar_toast(
+                win,
+                "El benchmark no produjo un resultado válido.",
+                alta=True,
+            )
+            return
+
+        if (
+            not isinstance(result, Mapping)
+            or result.get("development_mode") is not modo_desarrollador
+            or result.get("run_id") != run_id
+        ):
+            _mostrar_toast(
+                win,
+                "El benchmark no conserva una procedencia válida.",
+                alta=True,
+            )
+            return
+
+        win.datos_rendimiento.append(dict(result))
+        win._manual_development_mode = modo_desarrollador
         actualizar_interfaz_ranking(win)
+        _refrescar_historial_publico(win)
+        _mostrar_toast(win, f"Benchmark guardado en el run {run_id}.")
+    except Exception as exc:
+        _mostrar_toast(
+            win,
+            f"El benchmark terminó, pero falló la actualización de la UI: {exc}",
+            alta=True,
+        )
+    finally:
+        finalizar_bench(win, btn, icono_original)
 
-    threading.Thread(target=tarea, daemon=True).start()
 
-
-def finalizar_bench(win):
+def finalizar_bench(win, btn=None, icono_original=None):
     """Restaura la UI tras finalizar un benchmark."""
     win.en_proceso_bench = False
-    if hasattr(win, '_btn_activo') and win._btn_activo:
-        win._btn_activo.set_child(None)
-        win._btn_activo.set_icon_name(win._icono_original)
-        win._btn_activo = None
+    if btn is not None:
+        btn.set_child(None)
+        if icono_original:
+            btn.set_icon_name(icono_original)
     for b in win.btns_bench:
         b.set_sensitive(True)
 
@@ -215,14 +424,15 @@ def finalizar_bench(win):
 def actualizar_interfaz_ranking(win):
     """Recalcula y muestra el ranking de pruebas manuales."""
     active_sc = getattr(win, "active_sc", None)
+    resultados_actuales = _resultados_del_modo_actual(win)
 
-    for k in ["cpu", "threads", "memory", "latencia_fork", "latencia_compile", "latencia_loaded"]:
+    for k in _TIPOS_MANUALES:
         fila, lbl_val, lbl_sched, unidad = win.filas_pruebas[k]
         exp = win.expanders[k]
 
         calc_filt = []
-        for d_raw in win.datos_rendimiento:
-            if d_raw["tipo"] == k:
+        for d_raw in resultados_actuales:
+            if d_raw.get("tipo") == k:
                 v_tec = calcular_valor_ranking(d_raw, k)
                 d = d_raw.copy()
                 d['v_tec'] = v_tec
@@ -248,6 +458,7 @@ def actualizar_interfaz_ranking(win):
             lbl_val.set_text("—")
             lbl_sched.set_text("")
             fila.set_subtitle("Esperando datos...")
+            fila.remove_css_class("success")
 
         # Limpiar filas previas del expander
         for fila_prev in win.expander_rows.get(k, []):
@@ -256,7 +467,6 @@ def actualizar_interfaz_ranking(win):
 
         # Actualizar expander con detalle
         if filt:
-            max_v = filt[0]['v_tec']
             for i, d in enumerate(filt):
                 es_act = active_sc and d['sched'].lower() == active_sc.lower()
                 sub = f"{d['v_tec']:,.1f} {unidad} • {d.get('modo', '')}"
@@ -270,27 +480,62 @@ def actualizar_interfaz_ranking(win):
             exp.set_subtitle(f"{len(filt)} resultado(s) disponible(s)")
         else:
             exp.set_subtitle("Sin datos")
-
-    # ── Sincronizar gráfica central ──
-    for dr in win.datos_rendimiento:
-        sc_g = dr["sched"]
-        idx_g = _MAPA_CHART.get(dr["tipo"])
-        if idx_g is not None:
-            val_g = calcular_valor_grafico(dr, dr["tipo"])
-            win.grafico.registrar_scheduler(sc_g)
-            win.grafico.actualizar_dato(sc_g, idx_g, val_g)
+            exp.set_expanded(False)
 
     # ── Calcular líder ──
-    scores = calcular_ranking_manual(win.datos_rendimiento)
+    win.fila_lider_manual.remove_css_class("success")
+    win.fila_lider_manual.remove_css_class("accent")
+    # Los run_id persistidos son trazabilidad por prueba, no cohortes de una
+    # sesión manual. El scorer recibe la sesión visible sin esos identificadores.
+    resultados_scoring = []
+    for resultado in resultados_actuales:
+        copia = dict(resultado)
+        for clave_run in ("run_id", "id_run", "run"):
+            copia.pop(clave_run, None)
+        resultados_scoring.append(copia)
+    scores = calcular_ranking_manual(resultados_scoring)
     if scores:
         lider = max(scores, key=scores.get)
         score_v = scores[lider]
         win.fila_lider_manual.set_title(f"Mejor Planificador: {lider}")
         win.fila_lider_manual.set_subtitle(f"Puntuaci\u00f3n: {score_v:.1f}% (Equilibrio 40/40/20 | Potencia/Respuesta/Fluidez)")
+        win.fila_lider_manual.add_css_class("success")
+    else:
+        win.fila_lider_manual.set_title("Esperando datos...")
+        win.fila_lider_manual.set_subtitle(
+            "Determina el mejor basado en las pruebas manuales."
+        )
 
 
-def limpiar_ranking(win, btn):
-    """Limpia todos los datos de ranking."""
+def invalidar_estado_rendimiento(win):
+    """Descarta resultados, callbacks y procedencia del ranking manual."""
+    generacion = _nueva_generacion_manual(win)
     win.datos_rendimiento = []
-    _css_providers.clear()
-    actualizar_interfaz_ranking(win)
+    win._manual_development_mode = None
+    reset_grafico = getattr(getattr(win, "grafico", None), "reset", None)
+    if callable(reset_grafico):
+        reset_grafico()
+
+    if all(
+        hasattr(win, atributo)
+        for atributo in (
+            "filas_pruebas",
+            "expanders",
+            "expander_rows",
+            "fila_lider_manual",
+        )
+    ):
+        actualizar_interfaz_ranking(win)
+        for expander in win.expanders.values():
+            expander.set_expanded(False)
+
+    text_view = getattr(win, "text_view_logs", None)
+    get_buffer = getattr(text_view, "get_buffer", None)
+    if callable(get_buffer):
+        get_buffer().set_text("")
+    return generacion
+
+
+def limpiar_ranking(win):
+    """Limpia todos los datos de ranking."""
+    return invalidar_estado_rendimiento(win)

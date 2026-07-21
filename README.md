@@ -26,21 +26,25 @@ Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona
 
 ## Requisitos
 
-- Linux
+- Linux (comprobación crítica durante el preflight)
 - Python 3.11+ (o Python 3 moderno compatible)
-- GTK 4
-- Libadwaita 1
-- `scxctl`
-- `sudo` con sesión activa para operaciones de sistema
-- `stress-ng`
-- `hyperfine`
+- GTK 4, Libadwaita 1.7+ y PyGObject (comprobación crítica durante el preflight; `Adw.WrapBox` lo requiere)
+- `scxctl` (comprobación crítica durante el preflight)
+- Para controles y automatización privilegiados: ejecución directa como root, `run0` o `sudo`. Si no hay ninguno disponible, el preflight avisa pero permite abrir la interfaz.
+- `stress-ng` para benchmarks de estrés; solo expone respuesta agregada cuando existe una métrica independiente de context switch o mutex, nunca un p95 real.
+- `hyperfine` para benchmarks de latencia; calcula el p95 real a partir de un mínimo de 20 muestras en las pruebas `compile` y `loaded`.
+- Un compilador C disponible como `cc`, `gcc` o `clang` para `compile`. Reactor resuelve y valida una ruta regular y ejecutable, genera una carga C determinista dentro de un directorio temporal privado y no depende de `/tmp/rt-tests` ni de un árbol fuente preexistente.
+
+## Preflight
+
+Antes de importar la interfaz, `main.py` comprueba Linux, `scxctl`, GTK/PyGObject y que Libadwaita sea >= 1.7, requisito de `Adw.WrapBox`. Los errores críticos se muestran en un diálogo gráfico cuando GTK está disponible; si PyGObject, GTK o una versión compatible de Libadwaita faltan, se imprime un diagnóstico claro por `stderr`. El preflight también detecta si el proceso ya se ejecuta como root y busca los backends `sudo` y `run0`. Si no existe ninguna vía de elevación, la aplicación se abre y emite un aviso explícito de que los controles y la automatización privilegiados no estarán disponibles. La ausencia de `stress-ng`, `hyperfine` o de los nombres `cc`/`gcc`/`clang` mantiene un aviso específico para el benchmark afectado y tampoco bloquea el arranque de la interfaz. Al iniciar `compile`, el motor vuelve a resolver el compilador y valida que su ruta real sea regular y ejecutable; si no es segura, solo esa medición se rechaza con un error explícito.
 
 ## Estructura del proyecto
 
 - `main.py` - punto de entrada, valida dependencias y arranca la aplicación.
 - `app.py` - ventana principal y configuración global de la aplicación.
 - `core/` - lógica de negocio:
-  - `scx.py` - interacción con `scxctl` y sudo.
+  - `scx.py` - interacción con `scxctl` y ejecución privilegiada mediante el backend autodetectado (`sudo` o `run0`).
   - `benchmark.py` - ejecución de benchmarks.
   - `scoring.py` - cálculo de ranking y scores.
   - `database.py` - almacenamiento de historial y compatibilidad.
@@ -60,7 +64,7 @@ Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona
 python3 main.py
 ```
 
-Si no tienes una sesión de sudo activa, la aplicación te solicitará autenticación para ejecutar comandos de sistema.
+La aplicación autodetecta el backend privilegiado entre `run0` y `sudo` (o usa ejecución directa si ya se ejecuta como root). Cuando se usa `sudo`, puede solicitar autenticación; `run0` delega la autorización a su agente del sistema.
 
 ## Base de datos de historial
 
@@ -73,6 +77,14 @@ La aplicación guarda metadata y resultados en una base de datos SQLite ubicada 
 ## Nota
 
 La aplicación está diseñada específicamente para Linux y requiere que `scxctl` esté disponible en el sistema. Si `scxctl` no se encuentra, `main.py` muestra un error y detiene el arranque.
+
+Las recomendaciones y rankings de schedulers son experimentales: sirven para comparar ejecuciones en el entorno actual y no constituyen una garantía de rendimiento o estabilidad. Las pruebas con `stress-ng` solo exponen una respuesta agregada cuando existe una métrica independiente: tiempo medio de context switch (`mean_context_switch_us`) o de mutex (`mean_mutex_us`). La carga mixta (`threads`) no fabrica `response` a partir del throughput y se puntúa con throughput y fluidez; `p95` queda vacío y el p95 real se limita a las muestras de `hyperfine`.
+
+Cada benchmark real captura un `ScxState` estricto al inicio y al final. Si el scheduler o su modo cambian durante la medición, Reactor descarta el resultado y registra ambos estados para impedir que se persista bajo una atribución incorrecta. En modo desarrollador se reutiliza un estado simulado estable.
+
+Los artefactos YAML/JSON y la carga C generada viven en directorios temporales privados que se eliminan tras éxito, error, timeout o cancelación. En `loaded`, el proceso `stress-ng` conserva el cierre normal TERM/KILL del grupo creado por Reactor y además recibe un `--timeout` nativo, derivado del presupuesto y limitado, para que no sobreviva durante horas si Reactor termina abruptamente. La salida capturada de herramientas externas se limita y se entrega al log en bloques, evitando decenas de callbacks de interfaz por medición.
+
+Las sesiones de prueba restauran el estado inicial del scheduler al terminar, también al cancelar o fallar una operación cuando la restauración está disponible. El análisis no aplica por sí solo una recomendación: cambiar el scheduler requiere una confirmación explícita en la interfaz.
 
 ## Licencia
 

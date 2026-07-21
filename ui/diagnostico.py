@@ -4,77 +4,130 @@ Muestra un panel en tiempo real de uso de CPU, RAM, temperatura y métricas de p
 además de un gráfico de radar hexagonal de capacidades y detalles del hardware agrupados.
 """
 
+from __future__ import annotations
+
 import json
 import math
+import os
+import re
 import subprocess
+import threading
 import time
 
-import gi
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib, Gdk
+try:
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Adw", "1")
+    from gi.repository import Gtk, Adw, GLib, Gdk
+    _GTK_AVAILABLE = True
+except (ImportError, ValueError, AttributeError):
+    _GTK_AVAILABLE = False
+
+    class _UnavailableDrawingArea:
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("GTK4/Libadwaita no está disponible.")
+
+    class _UnavailableGtk:
+        DrawingArea = _UnavailableDrawingArea
+
+    Gtk = _UnavailableGtk()
+    Adw = GLib = Gdk = None
 
 try:
     import cairo as _cairo_mod
     _HAS_CAIRO = True
-except ImportError:
+except (ImportError, OSError):
     _HAS_CAIRO = False
 
-from utils.helpers import obtener_color_tema
+if _GTK_AVAILABLE:
+    from utils.helpers import obtener_color_tema
+else:
+    def obtener_color_tema(_name):
+        return None
 
 
 # ── Helpers de Formateo y Parsing ─────────────────────────────────────────────
 
-def parse_numeric(s: str) -> float:
-    """Extrae el primer número de una cadena, tolerando diferentes locales."""
-    if not s:
+_NUMBER_RE = re.compile(
+    r"[+-]?(?:(?:\d[\d\s\u00a0.,]*\d)|\d|(?:[.,]\d+))"
+    r"(?:[eE][+-]?\d+)?"
+)
+
+
+def _finite_nonnegative(value) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(number) or number < 0:
+        return 0.0
+    return number
+
+
+def _normalize_number_token(token: str) -> str:
+    token = token.replace("\u00a0", "").replace(" ", "")
+    exponent = ""
+    exponent_match = re.search(r"[eE][+-]?\d+$", token)
+    if exponent_match:
+        exponent = exponent_match.group(0)
+        token = token[:exponent_match.start()]
+
+    if "." in token and "," in token:
+        decimal = "." if token.rfind(".") > token.rfind(",") else ","
+        thousands = "," if decimal == "." else "."
+        token = token.replace(thousands, "")
+        if decimal == ",":
+            token = token.replace(",", ".")
+    elif token.count(",") == 1:
+        token = token.replace(",", ".")
+    elif token.count(",") > 1:
+        groups = token.split(",")
+        token = (
+            "".join(groups)
+            if all(len(group) == 3 for group in groups[1:])
+            else "".join(groups[:-1]) + "." + groups[-1]
+        )
+    elif token.count(".") > 1:
+        groups = token.split(".")
+        token = (
+            "".join(groups)
+            if all(len(group) == 3 for group in groups[1:])
+            else "".join(groups[:-1]) + "." + groups[-1]
+        )
+    return token + exponent
+
+
+def parse_numeric(value) -> float:
+    """Extrae un número finito, tolerando separadores locales y ausencias."""
+    if isinstance(value, (int, float)):
+        return _finite_nonnegative(value)
+    if value is None:
+        return 0.0
+    match = _NUMBER_RE.search(str(value))
+    if match is None:
         return 0.0
     try:
-        # Extraemos la primera palabra y quitamos caracteres no numéricos excepto los decimales/separadores
-        token = s.split()[0]
-        cleaned = ""
-        for char in token:
-            if char.isdigit() or char in '.,-':
-                cleaned += char
-        
-        # Si hay puntos y comas, asumimos formato internacional o español
-        if '.' in cleaned and ',' in cleaned:
-            dot_idx = cleaned.rfind('.')
-            comma_idx = cleaned.rfind(',')
-            if dot_idx > comma_idx:
-                cleaned = cleaned.replace(',', '')
-            else:
-                cleaned = cleaned.replace('.', '').replace(',', '.')
-        elif ',' in cleaned:
-            parts = cleaned.split(',')
-            if len(parts) == 2:
-                cleaned = parts[0] + '.' + parts[1]
-            else:
-                cleaned = cleaned.replace(',', '')
-        return float(cleaned)
-    except Exception:
+        parsed = float(_normalize_number_token(match.group(0)))
+    except (TypeError, ValueError, OverflowError):
         return 0.0
+    return _finite_nonnegative(parsed)
 
 
-def parse_cache_to_mib(s: str) -> float:
+def parse_cache_to_mib(value) -> float:
     """Convierte cadenas de caché (ej: '16 MiB (1 instancia)' o '256 KiB') a float en MiB."""
-    if not s:
+    if value is None:
         return 0.0
-    s_clean = s.split('(')[0].strip()
-    parts = s_clean.split()
-    if not parts:
-        return 0.0
-    try:
-        val = parse_numeric(parts[0])
-        if len(parts) > 1:
-            unit = parts[1].upper()
-            if "KIB" in unit or "KB" in unit:
-                val /= 1024.0
-            elif "GIB" in unit or "GB" in unit:
-                val *= 1024.0
-        return val
-    except Exception:
-        return 0.0
+    text = str(value).split("(", 1)[0].strip()
+    number = parse_numeric(text)
+    unit_match = re.search(r"\b(KIB|KB|MIB|MB|GIB|GB|B)\b", text, re.IGNORECASE)
+    unit = unit_match.group(1).upper() if unit_match else "MIB"
+    if unit in ("KIB", "KB"):
+        number /= 1024.0
+    elif unit in ("GIB", "GB"):
+        number *= 1024.0
+    elif unit == "B":
+        number /= 1024.0 * 1024.0
+    return _finite_nonnegative(number)
 
 
 # ── Lectura de datos del Sistema (/proc) ──────────────────────────────────────
@@ -161,12 +214,36 @@ def obtener_planif_stats():
 
 def _ejecutar_lscpu_json():
     try:
-        res = subprocess.run(["lscpu", "-J"], capture_output=True, text=True, timeout=2)
+        environment = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        res = subprocess.run(
+            ["lscpu", "-J"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            env=environment,
+        )
         if res.returncode == 0 and res.stdout:
-            return json.loads(res.stdout)
-    except Exception:
+            parsed = json.loads(res.stdout)
+            if isinstance(parsed, dict) and isinstance(parsed.get("lscpu"), list):
+                return parsed
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError):
         return None
     return None
+
+
+def _ejecutar_lscpu_texto():
+    try:
+        environment = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        result = subprocess.run(
+            ["lscpu"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            env=environment,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout if result.returncode == 0 else ""
 
 
 def _leer_proc_cpuinfo():
@@ -185,6 +262,132 @@ def _leer_proc_cpuinfo():
     except Exception:
         pass
     return info
+
+
+def _flatten_lscpu(data):
+    """Aplana una respuesta de ``lscpu -J`` ignorando nodos malformados."""
+    if not isinstance(data, dict) or not isinstance(data.get("lscpu"), list):
+        return [], {}
+
+    fields = []
+    flat_map = {}
+
+    def traverse(entries):
+        if not isinstance(entries, list):
+            return
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            field = str(entry.get("field") or "").strip().rstrip(":")
+            value = entry.get("data")
+            if field and value is not None and not isinstance(value, (dict, list)):
+                text = str(value).strip()
+                if text:
+                    fields.append((field, text))
+                    flat_map[field.lower()] = text
+            traverse(entry.get("children"))
+
+    traverse(data["lscpu"])
+    return fields, flat_map
+
+
+def _parse_lscpu_text(text):
+    fields = []
+    for line in str(text or "").splitlines():
+        if ":" not in line:
+            continue
+        field, value = line.split(":", 1)
+        field = field.strip()
+        value = value.strip()
+        if field and value:
+            fields.append((field, value))
+    return fields
+
+
+def _recoger_snapshot_cpu():
+    """Recoge especificaciones fuera del hilo GTK."""
+    lscpu_raw = _ejecutar_lscpu_json()
+    fields, _flat_map = _flatten_lscpu(lscpu_raw)
+    return {
+        "lscpu": lscpu_raw,
+        "lscpu_text": "" if fields else _ejecutar_lscpu_texto(),
+        "cpuinfo": _leer_proc_cpuinfo(),
+    }
+
+
+def _recoger_metricas_tiempo_real(win):
+    """Recoge E/S y subprocess en worker; no toca widgets GTK."""
+    scheduler = (None, None)
+    scheduler_available = False
+    if not _diagnostico_esta_ocupado(win):
+        try:
+            scheduler = win.scx.obtener_estado()
+            scheduler_available = True
+        except Exception:
+            pass
+    return {
+        "cpu": obtener_uso_cpu_general(),
+        "memory": obtener_uso_memoria(),
+        "temperature": win.sensor.obtener_temp(),
+        "scheduler": scheduler,
+        "scheduler_available": scheduler_available,
+        "cores": obtener_uso_cores(),
+        "planning": obtener_planif_stats(),
+        "loadavg": obtener_loadavg(),
+        "timestamp": time.monotonic(),
+    }
+
+
+def _diagnostico_esta_ocupado(win):
+    operations = getattr(win, "operaciones", None)
+    if operations is not None:
+        try:
+            busy = getattr(operations, "is_busy", False)
+            if bool(busy() if callable(busy) else busy):
+                return True
+        except Exception:
+            pass
+    return bool(
+        getattr(win, "en_proceso_auto", False)
+        or getattr(win, "en_proceso_bench", False)
+    )
+
+
+def _intervalo_sondeo_diagnostico(ocupado, pagina_activa=True):
+    if ocupado:
+        return 10_000
+    return 1_500 if pagina_activa else 5_000
+
+
+def _invalidar_baselines_diagnostico(win):
+    """Descarta referencias de tasas sin repetir escrituras si ya están vacías."""
+    if win is None:
+        return False
+
+    missing = object()
+    changed = False
+    for attr in (
+        "_prev_cpu_total",
+        "_prev_cpu_idle",
+        "_prev_ctxt",
+        "_prev_ctxt_time",
+    ):
+        previous = getattr(win, attr, missing)
+        if previous is missing:
+            setattr(win, attr, None)
+        elif previous is not None:
+            setattr(win, attr, None)
+            changed = True
+
+    previous_cores = getattr(win, "_prev_cores", missing)
+    if isinstance(previous_cores, dict):
+        if previous_cores:
+            previous_cores.clear()
+            changed = True
+    else:
+        setattr(win, "_prev_cores", {})
+        changed = changed or previous_cores not in (missing, None)
+    return changed
 
 
 def _clear_listbox(lb: Gtk.ListBox):
@@ -222,6 +425,107 @@ _EJES = [
 ]
 
 
+def normalizar_radar(raw_values, axes=_EJES):
+    """Normaliza valores contra los máximos declarados, preservando cada eje."""
+    values = list(raw_values or ())
+    normalized = []
+    for index, (_name, maximum, _unit) in enumerate(axes):
+        value = _finite_nonnegative(values[index] if index < len(values) else 0.0)
+        max_value = _finite_nonnegative(maximum)
+        normalized.append(min(1.0, value / max_value) if max_value > 0 else 0.0)
+    return normalized
+
+
+def _formatear_valor_radar(value, index):
+    value = _finite_nonnegative(value)
+    if value == 0:
+        return "?"
+    if index == 2:
+        return f"{value / 1000.0:.1f} GHz"
+    if index in (3, 4):
+        return f"{value:.1f} MiB" if value < 10 else f"{value:.0f} MiB"
+    return f"{value:.0f}"
+
+
+def preparar_datos_radar(raw_values, axes=_EJES):
+    """Devuelve valores normalizados, nombres, crudos y textos alineados."""
+    values = list(raw_values or ())
+    raw = [
+        _finite_nonnegative(values[index] if index < len(values) else 0.0)
+        for index in range(len(axes))
+    ]
+    names = [str(axis[0]) for axis in axes]
+    display = [_formatear_valor_radar(value, index) for index, value in enumerate(raw)]
+    return normalizar_radar(raw, axes), names, raw, display
+
+
+def _parse_frequency_mhz(value):
+    frequency = parse_numeric(value)
+    if "ghz" in str(value or "").lower():
+        frequency *= 1000.0
+    return _finite_nonnegative(frequency)
+
+
+def _extraer_valores_radar(flat_map, cpuinfo):
+    """Extrae seis valores alineados desde lscpu y, si falta, /proc/cpuinfo."""
+    flat_map = flat_map if isinstance(flat_map, dict) else {}
+    cpuinfo = cpuinfo if isinstance(cpuinfo, list) else []
+    first_cpu = cpuinfo[0] if cpuinfo and isinstance(cpuinfo[0], dict) else {}
+    find = _make_finder(flat_map)
+
+    logical_value = find("cpu(s)", "logical cpu(s)", "cpus")
+    if logical_value is None and cpuinfo:
+        logical_value = len(cpuinfo)
+    threads_value = find(
+        "hilo(s) de procesamiento por núcleo",
+        "thread(s) per core",
+        "hilo(s) por núcleo",
+    )
+    frequency_value = find(
+        "cpu mhz máx",
+        "cpu max mhz",
+        "velocidad máxima de cpu",
+        "max cpu mhz",
+    )
+    if frequency_value is None:
+        frequency_value = find("cpu mhz", "mhz")
+    if frequency_value is None:
+        frequency_value = first_cpu.get("cpu MHz")
+
+    l3_value = find("l3 cache", "caché l3", "l3")
+    l2_value = find("l2 cache", "caché l2", "l2")
+    cores_value = find(
+        "núcleo(s) por socket",
+        "core(s) per socket",
+        "core(s)",
+        "núcleos por socket",
+    )
+    if cores_value is None:
+        cores_value = first_cpu.get("cpu cores")
+
+    logical = parse_numeric(logical_value)
+    threads = parse_numeric(threads_value)
+    cores = parse_numeric(cores_value)
+    if cores <= 0 and logical > 0:
+        sockets = max(1.0, parse_numeric(find("socket(s)", "sockets")) or 1.0)
+        divisor = sockets * max(1.0, threads or 1.0)
+        cores = logical / divisor
+    if threads <= 0 and first_cpu:
+        siblings = parse_numeric(first_cpu.get("siblings"))
+        proc_cores = parse_numeric(first_cpu.get("cpu cores"))
+        if siblings > 0 and proc_cores > 0:
+            threads = siblings / proc_cores
+
+    return [
+        logical,
+        threads,
+        _parse_frequency_mhz(frequency_value),
+        parse_cache_to_mib(l3_value),
+        parse_cache_to_mib(l2_value),
+        cores,
+    ]
+
+
 # ── Radar Chart (Cairo) ────────────────────────────────────────────────────────
 
 class RadarChart(Gtk.DrawingArea):
@@ -229,14 +533,16 @@ class RadarChart(Gtk.DrawingArea):
     _PULSE_SPEED  = 0.010
     _PULSE_RINGS  = 3
 
-    def __init__(self):
+    def __init__(self, busy_check=None):
         super().__init__()
+        self._busy_check = busy_check or (lambda: False)
         self.set_size_request(self.SIZE, self.SIZE)
         self.set_hexpand(True)
         self.set_halign(Gtk.Align.CENTER)
         self._values: list[float] = []
         self._labels: list[str]   = []
         self._raw_values: list    = []
+        self._display_values: list[str] = []
         self._progress  = 0.0
         self._pulse_t   = 0.0
         self._anim_id   = None
@@ -246,6 +552,7 @@ class RadarChart(Gtk.DrawingArea):
         self._num_axes  = 0
         self._trans_alpha = 1.0
         self.set_draw_func(self._draw)
+        self.connect("unrealize", self._on_unrealize)
 
         ev_motion = Gtk.EventControllerMotion()
         ev_motion.connect("motion", self._on_motion)
@@ -300,20 +607,80 @@ class RadarChart(Gtk.DrawingArea):
                 "subtext": (0.45, 0.50, 0.55)
             }
 
-    def set_data(self, values: list[float], labels: list[str], raw_values: list = None):
-        valid = [(v, l) for v, l in zip(values, labels) if v > 0]
-        new_vals = [v for v, _ in valid]
-        new_labels = [l for _, l in valid]
-        new_raw = None
-        if raw_values:
-            new_raw = [r for r, (v, _) in zip(raw_values, valid) if v > 0]
+    def _is_busy(self):
+        try:
+            return bool(self._busy_check())
+        except Exception:
+            return False
+
+    def _is_rooted(self):
+        try:
+            return self.get_root() is not None
+        except Exception:
+            return False
+
+    def _stop_animations(self):
+        if self._pulse_id:
+            GLib.source_remove(self._pulse_id)
+            self._pulse_id = None
+        if self._anim_id:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
+
+    def _on_unrealize(self, *_args):
+        self._stop_animations()
+
+    def dispose_sources(self):
+        self._stop_animations()
+
+    def _schedule_pulse(self):
+        if self._pulse_id or not self._is_rooted():
+            return
+        interval = 1_000 if self._is_busy() else 66
+        self._pulse_id = GLib.timeout_add(interval, self._tick_pulse)
+
+    def set_data(
+        self,
+        values: list[float],
+        labels: list[str],
+        raw_values: list = None,
+        display_values: list[str] = None,
+    ):
+        values = list(values or ())
+        labels = list(labels or ())
+        raw_values = list(raw_values or ())
+        display_values = list(display_values or ())
+        axis_count = max(
+            len(values), len(labels), len(raw_values), len(display_values)
+        )
+        new_vals = [
+            min(1.0, _finite_nonnegative(values[index] if index < len(values) else 0.0))
+            for index in range(axis_count)
+        ]
+        new_labels = [
+            str(labels[index]) if index < len(labels) and labels[index] else f"Eje {index + 1}"
+            for index in range(axis_count)
+        ]
+        new_raw = [
+            _finite_nonnegative(
+                raw_values[index] if index < len(raw_values) else 0.0
+            )
+            for index in range(axis_count)
+        ]
+        new_display = [
+            str(display_values[index])
+            if index < len(display_values) and display_values[index]
+            else (f"{new_raw[index]:g}" if new_raw[index] else "?")
+            for index in range(axis_count)
+        ]
 
         new_mode = "radar" if len(new_vals) >= 3 else "bars"
         axes_changed = (len(new_vals) != self._num_axes) or (new_mode != self._mode)
 
         self._values = new_vals
         self._labels = new_labels
-        self._raw_values = new_raw or []
+        self._raw_values = new_raw
+        self._display_values = new_display
         self._num_axes = len(new_vals)
         self._mode = new_mode
 
@@ -324,28 +691,48 @@ class RadarChart(Gtk.DrawingArea):
             self._progress = max(self._progress, 0.0)
 
         self._pulse_t = 0.0
-        if self._pulse_id:
-            GLib.source_remove(self._pulse_id)
-            self._pulse_id = None
-        if self._anim_id:
-            GLib.source_remove(self._anim_id)
-        self._anim_id = GLib.timeout_add(14, self._tick_entry)
+        self._stop_animations()
+        if not self._is_rooted():
+            self._progress = 1.0
+            self._trans_alpha = 1.0
+            return
+        if self._is_busy():
+            self._progress = 1.0
+            self._trans_alpha = 1.0
+            self.queue_draw()
+            self._schedule_pulse()
+            return
+        self._anim_id = GLib.timeout_add(16, self._tick_entry)
 
     def _tick_entry(self) -> bool:
+        if not self._is_rooted():
+            self._anim_id = None
+            return False
+        if self._is_busy():
+            self._progress = 1.0
+            self._trans_alpha = 1.0
+            self._anim_id = None
+            self.queue_draw()
+            self._schedule_pulse()
+            return False
         self._progress = min(1.0, self._progress + 0.030)
         self._trans_alpha = min(1.0, self._trans_alpha + 0.05)
         self.queue_draw()
         if self._progress >= 1.0:
             self._anim_id = None
-            self._pulse_id = GLib.timeout_add(33, self._tick_pulse)
+            self._schedule_pulse()
             return False
         return True
 
     def _tick_pulse(self) -> bool:
-        if self.get_visible():
+        self._pulse_id = None
+        if not self._is_rooted():
+            return False
+        if not self._is_busy() and self.get_visible():
             self._pulse_t = (self._pulse_t + self._PULSE_SPEED) % 1.0
             self.queue_draw()
-        return True
+        self._schedule_pulse()
+        return False
 
     @staticmethod
     def _ease(t: float) -> float:
@@ -400,10 +787,6 @@ class RadarChart(Gtk.DrawingArea):
         total_bars_w = n * bar_w + (n - 1) * (bar_w // 2)
         start_x = margin_l + (cw - total_bars_w) / 2
 
-        max_val = max(self._values) if self._values else 1.0
-        if max_val <= 0:
-            max_val = 1.0
-
         # Grid horizontal
         cr.set_line_width(0.5)
         for i in range(5):
@@ -417,7 +800,7 @@ class RadarChart(Gtk.DrawingArea):
         hi = self._hover_idx
         for i in range(n):
             val = self._values[i] if i < len(self._values) else 0
-            bar_h = ch * (val / max_val) * prog
+            bar_h = ch * val * prog
             x = start_x + i * (bar_w + bar_w // 2)
             y = margin_t + ch - bar_h
 
@@ -455,8 +838,7 @@ class RadarChart(Gtk.DrawingArea):
             cr.show_text(label)
 
             # Valor (arriba de la barra)
-            raw = self._raw_values[i] if i < len(self._raw_values) else 0
-            val_str = f"{raw:.0f}" if raw else ""
+            val_str = self._display_values[i] if i < len(self._display_values) else "?"
             cr.set_font_size(9.0)
             ext_v = cr.text_extents(val_str)
             cr.set_source_rgba(*colors["text"], 0.8 * ta * prog)
@@ -584,7 +966,7 @@ class RadarChart(Gtk.DrawingArea):
             lx = cx + (R + OFFSET) * math.cos(a)
             ly = cy + (R + OFFSET) * math.sin(a)
             name = self._labels[i] if i < len(self._labels) else "?"
-            val = name
+            val = self._display_values[i] if i < len(self._display_values) else "?"
             is_hl = (i == hi)
 
             cr.select_font_face("Sans", 0, 0)
@@ -625,109 +1007,130 @@ class RadarChart(Gtk.DrawingArea):
 
 # ── Monitoreo en Tiempo Real - Callback de Actualización ──────────────────────
 
-def actualizar_diagnostico_tiempo_real(win, widgets):
-    """Callback periódico para actualizar métricas en vivo."""
-    try:
-        # Detener actualización si la ventana ya no está visible o fue destruida
-        if not win or not win.get_visible():
-            return False
-    except Exception:
-        return False
+def actualizar_diagnostico_tiempo_real(win, widgets, snapshot):
+    """Aplica en GTK una instantánea ya recogida por un worker."""
+    if not isinstance(snapshot, dict):
+        return
 
-    # Evitar consumo innecesario si no estamos en la pestaña Diagnóstico
-    if win.split_view.get_content() != win.pag_diagnostico:
-        return True
-
-    # 1. Carga General de CPU
-    t_tot, t_idl = obtener_uso_cpu_general()
+    cpu_snapshot = snapshot.get("cpu", (0.0, 0.0))
+    if not isinstance(cpu_snapshot, (tuple, list)) or len(cpu_snapshot) != 2:
+        cpu_snapshot = (0.0, 0.0)
+    t_tot, t_idl = cpu_snapshot
+    t_tot = _finite_nonnegative(t_tot)
+    t_idl = _finite_nonnegative(t_idl)
     if win._prev_cpu_total is not None:
         d_tot = t_tot - win._prev_cpu_total
         d_idl = t_idl - win._prev_cpu_idle
         if d_tot > 0:
-            cpu_usage = (d_tot - d_idl) / d_tot
+            cpu_usage = min(1.0, max(0.0, (d_tot - d_idl) / d_tot))
             widgets["cpu_progress"].set_fraction(cpu_usage)
             widgets["cpu_val_lbl"].set_label(f"{cpu_usage * 100:.1f}%")
     win._prev_cpu_total = t_tot
     win._prev_cpu_idle = t_idl
 
-    # 2. Uso de Memoria
-    m_tot, m_usd, m_frac = obtener_uso_memoria()
+    memory_snapshot = snapshot.get("memory", (0.0, 0.0, 0.0))
+    if not isinstance(memory_snapshot, (tuple, list)) or len(memory_snapshot) != 3:
+        memory_snapshot = (0.0, 0.0, 0.0)
+    m_tot, m_usd, m_frac = memory_snapshot
+    m_tot = _finite_nonnegative(m_tot)
+    m_usd = _finite_nonnegative(m_usd)
+    m_frac = min(1.0, _finite_nonnegative(m_frac))
     if m_tot > 0:
         widgets["mem_progress"].set_fraction(m_frac)
-        widgets["mem_val_lbl"].set_label(f"{m_usd:.1f} GB / {m_tot:.1f} GB ({m_frac * 100:.1f}%)")
+        widgets["mem_val_lbl"].set_label(
+            f"{m_usd:.1f} GB / {m_tot:.1f} GB ({m_frac * 100:.1f}%)"
+        )
 
-    # 3. Temperatura
-    t_temp = win.sensor.obtener_temp()
-    if t_temp > 0:
-        lbl_temp = widgets["temp_val_lbl"]
-        lbl_temp.set_label(f"{t_temp:.1f} °C")
-        lbl_temp.remove_css_class("success-label")
-        lbl_temp.remove_css_class("warning-label")
-        lbl_temp.remove_css_class("error-label")
-        if t_temp < 60:
-            lbl_temp.add_css_class("success-label")
-        elif t_temp < 75:
-            lbl_temp.add_css_class("warning-label")
+    temperature = _finite_nonnegative(snapshot.get("temperature", 0.0))
+    temperature_label = widgets["temp_val_lbl"]
+    for css_class in ("success-label", "warning-label", "error-label"):
+        temperature_label.remove_css_class(css_class)
+    if temperature > 0:
+        temperature_label.set_label(f"{temperature:.1f} °C")
+        if temperature < 60:
+            temperature_label.add_css_class("success-label")
+        elif temperature < 75:
+            temperature_label.add_css_class("warning-label")
         else:
-            lbl_temp.add_css_class("error-label")
+            temperature_label.add_css_class("error-label")
     else:
-        widgets["temp_val_lbl"].set_label("N/D")
+        temperature_label.set_label("N/D")
 
-    # 4. Planificador Activo
-    sc_name, sc_mode = win.scx.obtener_estado()
-    if sc_name:
-        widgets["sched_val_lbl"].set_label(f"{sc_name} [{sc_mode}]")
+    scheduler = snapshot.get("scheduler", (None, None))
+    if not isinstance(scheduler, (tuple, list)) or len(scheduler) != 2:
+        scheduler = (None, None)
+    scheduler_name, scheduler_mode = scheduler
+    if not snapshot.get("scheduler_available", False):
+        widgets["sched_val_lbl"].set_label("N/D")
+    elif scheduler_name:
+        widgets["sched_val_lbl"].set_label(
+            f"{scheduler_name} [{scheduler_mode or 'auto'}]"
+        )
     else:
         widgets["sched_val_lbl"].set_label("Sistema Base (Default)")
 
-    # 5. Carga de Cores Individuales
-    cores_stats = obtener_uso_cores()
-    for name, (c_tot, c_idl) in cores_stats.items():
-        if name in win._prev_cores:
-            prev_tot, prev_idl = win._prev_cores[name]
-            d_tot = c_tot - prev_tot
-            d_idl = c_idl - prev_idl
-            if d_tot > 0:
-                core_usage = (d_tot - d_idl) / d_tot
-                if name in widgets["core_bars"]:
+    cores_stats = snapshot.get("cores", {})
+    if isinstance(cores_stats, dict):
+        for name, current in cores_stats.items():
+            if not isinstance(current, (tuple, list)) or len(current) != 2:
+                continue
+            c_tot = _finite_nonnegative(current[0])
+            c_idl = _finite_nonnegative(current[1])
+            if name in win._prev_cores:
+                prev_tot, prev_idl = win._prev_cores[name]
+                d_tot = c_tot - prev_tot
+                d_idl = c_idl - prev_idl
+                if d_tot > 0 and name in widgets["core_bars"]:
+                    core_usage = min(1.0, max(0.0, (d_tot - d_idl) / d_tot))
                     widgets["core_bars"][name].set_fraction(core_usage)
-                    widgets["core_labels"][name].set_label(f"{int(core_usage * 100)}%")
-        win._prev_cores[name] = (c_tot, c_idl)
+                    widgets["core_labels"][name].set_label(
+                        f"{int(core_usage * 100)}%"
+                    )
+            win._prev_cores[name] = (c_tot, c_idl)
 
-    # 6. Estadísticas de Planificación
-    ctxt, running, blocked = obtener_planif_stats()
-    now_t = time.time()
+    planning = snapshot.get("planning", (0, 0, 0))
+    if not isinstance(planning, (tuple, list)) or len(planning) != 3:
+        planning = (0, 0, 0)
+    ctxt, running, blocked = (int(_finite_nonnegative(value)) for value in planning)
+    now_t = _finite_nonnegative(snapshot.get("timestamp", 0.0))
     if win._prev_ctxt is not None and win._prev_ctxt_time is not None:
         dt = now_t - win._prev_ctxt_time
-        if dt > 0:
-            ctxt_rate = (ctxt - win._prev_ctxt) / dt
-            # Mostrar con formato local (puntos de miles)
-            widgets["ctxt_rate_lbl"].set_label(f"{int(ctxt_rate):,}".replace(",", ".") + " ctxt/s")
+        delta = ctxt - win._prev_ctxt
+        if dt > 0 and delta >= 0:
+            ctxt_rate = delta / dt
+            widgets["ctxt_rate_lbl"].set_label(
+                f"{int(ctxt_rate):,}".replace(",", ".") + " ctxt/s"
+            )
     win._prev_ctxt = ctxt
     win._prev_ctxt_time = now_t
 
     widgets["ctxt_total_lbl"].set_label(f"{ctxt:,}".replace(",", "."))
     widgets["procs_running_lbl"].set_label(str(running))
     widgets["procs_blocked_lbl"].set_label(str(blocked))
-
-    # Resaltar en rojo si hay procesos bloqueados por I/O
     widgets["procs_blocked_lbl"].remove_css_class("error-label")
     widgets["procs_blocked_lbl"].remove_css_class("success-label")
-    if blocked > 0:
-        widgets["procs_blocked_lbl"].add_css_class("error-label")
-    else:
-        widgets["procs_blocked_lbl"].add_css_class("success-label")
+    widgets["procs_blocked_lbl"].add_css_class(
+        "error-label" if blocked > 0 else "success-label"
+    )
 
-    # 7. Carga Media (Load Average)
-    la1, la5, la15 = obtener_loadavg()
-    widgets["loadavg_lbl"].set_label(f"{la1}  •  {la5}  •  {la15}")
-
-    return True
+    loadavg = snapshot.get("loadavg", (0.0, 0.0, 0.0))
+    if not isinstance(loadavg, (tuple, list)) or len(loadavg) != 3:
+        loadavg = (0.0, 0.0, 0.0)
+    load_values = [parse_numeric(value) for value in loadavg]
+    widgets["loadavg_lbl"].set_label(
+        "  •  ".join(f"{value:.2f}" for value in load_values)
+    )
 
 
 # ── Construcción de la Interfaz Diagnóstico ────────────────────────────────────
 
 def setup_diagnostico_ui(win):
+    if not _GTK_AVAILABLE:
+        raise RuntimeError("GTK4/Libadwaita no está disponible.")
+    previous_cleanup = getattr(win, "_diagnostico_cleanup", None)
+    if callable(previous_cleanup):
+        previous_cleanup()
+
     pref_page = Adw.PreferencesPage()
 
     # ── CSS Personalizado para la Rejilla ──
@@ -930,7 +1333,7 @@ def setup_diagnostico_ui(win):
     pref_page.add(radar_group)
 
     if _HAS_CAIRO:
-        radar = RadarChart()
+        radar = RadarChart(lambda: _diagnostico_esta_ocupado(win))
         radar_group.add(radar)
     else:
         radar = None
@@ -983,8 +1386,28 @@ def setup_diagnostico_ui(win):
     exp_seguridad.add_row(lb_seguridad)
     detalle_group.add(exp_seguridad)
 
-    # ── Función de Carga de Datos ──
-    def poblar():
+    refresh_state = {
+        "running": False,
+        "pending": False,
+        "generation": 0,
+        "disposed": False,
+    }
+    monitor_state = {
+        "source_id": None,
+        "worker_running": False,
+        "generation": 0,
+        "baseline_epoch": 0,
+        "paused": False,
+    }
+
+    def _is_rooted():
+        try:
+            return pref_page.get_root() is not None
+        except Exception:
+            return False
+
+    # ── Aplicación GTK de las especificaciones recogidas por el worker ──
+    def poblar(snapshot):
         _clear_listbox(lb_general)
         _clear_listbox(lb_topologia)
         _clear_listbox(lb_caches)
@@ -992,151 +1415,94 @@ def setup_diagnostico_ui(win):
         _clear_listbox(lb_virtualizacion)
         _clear_listbox(lb_seguridad)
 
-        lscpu_raw = _ejecutar_lscpu_json()
-        cpuinfo   = _leer_proc_cpuinfo()
-        first_cpu = cpuinfo[0] if cpuinfo else {}
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        cpuinfo = snapshot.get("cpuinfo", [])
+        cpuinfo = cpuinfo if isinstance(cpuinfo, list) else []
+        first_cpu = cpuinfo[0] if cpuinfo and isinstance(cpuinfo[0], dict) else {}
+        fields_list, flat_map = _flatten_lscpu(snapshot.get("lscpu"))
+        if not fields_list:
+            fields_list = _parse_lscpu_text(snapshot.get("lscpu_text", ""))
+            flat_map = {field.lower(): value for field, value in fields_list}
 
-        fields_list = []
-        flat_map = {}
+        for field, data in fields_list:
+            field_low = field.lower()
+            row = Adw.ActionRow(title=field, subtitle=str(data))
+            if any(
+                key in field_low
+                for key in (
+                    "vulnerabilidad", "vulnerability", "mitigación", "mitigation",
+                    "gather data", "ghostwrite", "speculative",
+                )
+            ):
+                lb_seguridad.append(row)
+            elif any(
+                key in field_low
+                for key in ("l1", "l2", "l3", "l1d", "l1i", "caché", "cache")
+            ):
+                lb_caches.append(row)
+            elif any(
+                key in field_low
+                for key in (
+                    "mhz", "ghz", "frecuencia", "frequency", "bogomips",
+                    "escala", "scaling", "driver", "aumento",
+                )
+            ):
+                lb_frecuencias.append(row)
+            elif any(
+                key in field_low
+                for key in ("virtual", "hiper", "hyper", "kvm")
+            ):
+                lb_virtualizacion.append(row)
+            elif any(
+                key in field_low
+                for key in (
+                    "socket", "nodo", "numa", "hilo", "núcleo", "core",
+                    "thread", "siblings", "cpu(s)",
+                )
+            ):
+                lb_topologia.append(row)
+            else:
+                lb_general.append(row)
 
-        if lscpu_raw and 'lscpu' in lscpu_raw:
-            # Función recursiva para aplanar lscpu -J
-            def traverse(entries):
-                for entry in entries:
-                    field = entry.get("field", "").rstrip(":")
-                    data = entry.get("data")
-                    if data is not None:
-                        fields_list.append((field, data))
-                        flat_map[field.lower()] = data
-                    children = entry.get("children")
-                    if children:
-                        traverse(children)
-            
-            traverse(lscpu_raw['lscpu'])
+        find = _make_finder(flat_map)
+        model_name = (
+            find("nombre del modelo", "model name")
+            or first_cpu.get("model name")
+            or "Procesador Desconocido"
+        )
+        escaped_model_name = GLib.markup_escape_text(str(model_name))
+        win.cpu_title_row.set_title(f"<b>{escaped_model_name}</b>")
+        win.cpu_title_row.set_subtitle("Información y Diagnóstico de la CPU")
+        win.cpu_title_row.set_use_markup(True)
 
-            # Población clasificada en Expanders
-            for field, data in fields_list:
-                field_low = field.lower()
-                row = Adw.ActionRow(title=field, subtitle=str(data))
-
-                if any(k in field_low for k in ["vulnerabilidad", "vulnerability", "mitigación", "mitigation", "gather data", "ghostwrite", "speculative"]):
-                    lb_seguridad.append(row)
-                elif any(k in field_low for k in ["l1", "l2", "l3", "l1d", "l1i", "caché", "cache"]):
-                    lb_caches.append(row)
-                elif any(k in field_low for k in ["mhz", "ghz", "frecuencia", "frequency", "bogomips", "escala", "scaling", "driver", "aumento"]):
-                    lb_frecuencias.append(row)
-                elif any(k in field_low for k in ["virtual", "hiper", "hyper", "kvm"]):
-                    lb_virtualizacion.append(row)
-                elif any(k in field_low for k in ["socket", "nodo", "numa", "hilo", "núcleo", "core", "thread", "siblings", "cpu(s)"]):
-                    lb_topologia.append(row)
-                else:
-                    lb_general.append(row)
-
-            # Buscador inteligente sobre mapa plano
-            find = _make_finder(flat_map)
-
-            model_name = find('nombre del modelo', 'model name') or first_cpu.get('model name') or "Procesador Desconocido"
-            win.cpu_title_row.set_title(f"<b>{model_name}</b>")
-            win.cpu_title_row.set_subtitle("Información y Diagnóstico de la CPU")
-            win.cpu_title_row.set_use_markup(True)
-
-            # ── Extraer Valores para el Radar Chart ──
-            cores_val = find('cpu(s)', 'logical cpu(s)', 'cpus')
-            threads_val = find(
-                'hilo(s) de procesamiento por núcleo',
-                'thread(s) per core',
-                'hilo(s) por núcleo',
-                'hilo'
-            )
-            freq_val = find(
-                'cpu mhz máx',
-                'cpu max mhz',
-                'velocidad máxima de cpu',
-                'max cpu mhz'
-            )
-            if not freq_val:
-                freq_val = find('cpu(s) factor de escala mhz', 'cpu mhz', 'mhz')
-            if not freq_val and first_cpu:
-                freq_val = first_cpu.get('cpu MHz')
-
-            l3_val = find('l3', 'l3 cache', 'caché l3')
-            l2_val = find('l2', 'l2 cache', 'caché l2')
-            cps_val = find('núcleo(s) por', 'core(s) per socket', 'core(s)', 'núcleos por', 'nucleo')
-
-            if not cps_val:
-                sockets_val = find('«socket(s)»', 'socket(s)', 'sockets') or '1'
-                if cores_val and sockets_val:
-                    try:
-                        cps_derived = int(parse_numeric(cores_val)) // max(1, int(parse_numeric(sockets_val)))
-                        if threads_val:
-                            cps_derived //= max(1, int(parse_numeric(threads_val)))
-                        cps_val = str(cps_derived) if cps_derived > 0 else None
-                    except Exception:
-                        pass
-
-            raw   = [cores_val, threads_val, freq_val, l3_val, l2_val, cps_val]
-            units = [eje[2] for eje in _EJES]
-
-            def to_f(val_s, idx):
-                if not val_s:
-                    return 0.0
-                return parse_cache_to_mib(val_s) if idx in (3, 4) else parse_numeric(val_s)
-
-            raw_nums = [to_f(v, i) for i, v in enumerate(raw)]
-            defaults = [16.0, 4.0, 4000.0, 32.0, 8.0, 8.0]
-            dynamic_maxes = [max(v * 1.5, d) for v, d in zip(raw_nums, defaults)]
-
-            norms, labels = [], []
-            for idx, (fv, mx) in enumerate(zip(raw_nums, dynamic_maxes)):
-                norms.append(min(1.0, fv / mx) if mx else 0.0)
-                unit = units[idx]
-                if idx == 2 and fv:
-                    labels.append(f"{fv/1000:.1f}{unit}")
-                elif idx in (3, 4) and fv:
-                    labels.append(f"{fv:.1f}{unit}" if fv < 10 else f"{int(fv)}{unit}")
-                else:
-                    labels.append(f"{int(fv)}{unit}" if fv else "?")
-
-            if radar:
-                radar.set_data(norms, labels, raw_values=raw_nums)
-
-        else:
-            # Fallback a lscpu plano
-            try:
-                res = subprocess.run(["lscpu"], capture_output=True, text=True, timeout=2)
-                for linea in res.stdout.splitlines():
-                    if ':' in linea:
-                        k, v = linea.split(':', 1)
-                        lb_general.append(Adw.ActionRow(title=k.strip(), subtitle=v.strip()))
-            except Exception:
-                lb_general.append(Adw.ActionRow(title="Error al obtener lscpu"))
-
-        # Completar desde /proc/cpuinfo
+        represented_fields = {field.lower() for field, _value in fields_list}
         if cpuinfo:
-            if not win.cpu_title_row.get_title():
-                win.cpu_title_row.set_title(first_cpu.get('model name', 'Procesador'))
-                win.cpu_title_row.set_subtitle("Información de CPU")
-
-            for k in ['model name', 'cpu MHz', 'cache size', 'flags', 'siblings', 'cpu cores']:
-                if k in first_cpu:
-                    row = Adw.ActionRow(title=k.title(), subtitle=str(first_cpu[k]))
-                    if 'cache' in k or 'size' in k:
+            for key in (
+                "model name", "cpu MHz", "cache size", "flags", "siblings", "cpu cores"
+            ):
+                if key in first_cpu and key.lower() not in represented_fields:
+                    row = Adw.ActionRow(title=key.title(), subtitle=str(first_cpu[key]))
+                    if "cache" in key or "size" in key:
                         lb_caches.append(row)
-                    elif 'mhz' in k.lower():
+                    elif "mhz" in key.lower():
                         lb_frecuencias.append(row)
-                    elif 'cores' in k.lower() or 'siblings' in k.lower():
+                    elif "cores" in key.lower() or "siblings" in key.lower():
                         lb_topologia.append(row)
                     else:
                         lb_general.append(row)
 
-            if radar and not lscpu_raw:
-                cores_f = float(len(cpuinfo))
-                mhz_f   = parse_numeric(first_cpu.get('cpu MHz', '0'))
-                cores_c = parse_numeric(first_cpu.get('cpu cores', '0')) or (cores_f / 2)
-                radar.set_data(
-                    [min(1.0, cores_f/32), 0.0, min(1.0, mhz_f/6000), 0.0, 0.0, min(1.0, cores_c/16)],
-                    [str(int(cores_f)), "?", f"{mhz_f/1000:.1f}GHz", "?", "?", str(int(cores_c))]
-                )
+        if not fields_list and not cpuinfo:
+            lb_general.append(Adw.ActionRow(title="No se pudo obtener información de CPU"))
+
+        if radar:
+            raw_values = _extraer_valores_radar(flat_map, cpuinfo)
+            norms, names, raw_values, display = preparar_datos_radar(raw_values)
+            radar.set_data(
+                norms,
+                names,
+                raw_values=raw_values,
+                display_values=display,
+            )
 
         # Ocultar automáticamente secciones vacías
         exp_seguridad.set_visible(lb_seguridad.get_row_at_index(0) is not None)
@@ -1146,6 +1512,141 @@ def setup_diagnostico_ui(win):
         exp_topologia.set_visible(lb_topologia.get_row_at_index(0) is not None)
         exp_general.set_visible(lb_general.get_row_at_index(0) is not None)
 
+    def _apply_spec_snapshot(generation, snapshot):
+        if generation != refresh_state["generation"]:
+            return False
+        refresh_state["running"] = False
+        if refresh_state["disposed"]:
+            return False
+        btn_actualizar.set_sensitive(True)
+        if not _is_rooted():
+            refresh_state["pending"] = True
+            return False
+        poblar(snapshot)
+        if refresh_state["pending"]:
+            refresh_state["pending"] = False
+            _request_spec_refresh()
+        return False
+
+    def _request_spec_refresh(*_args):
+        if refresh_state["disposed"]:
+            return
+        if not _is_rooted():
+            refresh_state["pending"] = True
+            return
+        if _diagnostico_esta_ocupado(win):
+            refresh_state["pending"] = True
+            return
+        if refresh_state["running"]:
+            refresh_state["pending"] = True
+            return
+        refresh_state["running"] = True
+        refresh_state["pending"] = False
+        refresh_state["generation"] += 1
+        generation = refresh_state["generation"]
+        btn_actualizar.set_sensitive(False)
+
+        def worker():
+            try:
+                snapshot = _recoger_snapshot_cpu()
+            except Exception:
+                snapshot = {"lscpu": None, "lscpu_text": "", "cpuinfo": []}
+            GLib.idle_add(_apply_spec_snapshot, generation, snapshot)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _page_is_active():
+        try:
+            return win.split_view.get_content() == win.pag_diagnostico
+        except Exception:
+            return False
+
+    def _set_monitor_paused(paused):
+        paused = bool(paused)
+        if monitor_state["paused"] == paused:
+            return
+        _invalidar_baselines_diagnostico(win)
+        monitor_state["baseline_epoch"] += 1
+        monitor_state["paused"] = paused
+
+    def _clear_monitor_source():
+        source_id = monitor_state["source_id"]
+        if source_id is not None:
+            GLib.source_remove(source_id)
+            monitor_state["source_id"] = None
+            if getattr(win, "_diagnostico_timer_id", None) == source_id:
+                win._diagnostico_timer_id = None
+
+    def _schedule_monitor(delay=None):
+        if (
+            refresh_state["disposed"]
+            or not _is_rooted()
+            or monitor_state["source_id"] is not None
+        ):
+            return
+        if delay is None:
+            delay = _intervalo_sondeo_diagnostico(
+                _diagnostico_esta_ocupado(win), _page_is_active()
+            )
+        source_id = GLib.timeout_add(delay, _monitor_timeout)
+        monitor_state["source_id"] = source_id
+        win._diagnostico_timer_id = source_id
+
+    def _apply_monitor_snapshot(generation, baseline_epoch, snapshot):
+        if generation != monitor_state["generation"]:
+            return False
+        monitor_state["worker_running"] = False
+        if refresh_state["disposed"] or not _is_rooted():
+            return False
+        if baseline_epoch != monitor_state["baseline_epoch"]:
+            _schedule_monitor()
+            return False
+        try:
+            paused = not _page_is_active() or _diagnostico_esta_ocupado(win)
+            _set_monitor_paused(paused)
+            if snapshot and not paused:
+                actualizar_diagnostico_tiempo_real(win, widgets, snapshot)
+        finally:
+            _schedule_monitor()
+        return False
+
+    def _monitor_timeout():
+        source_id = monitor_state["source_id"]
+        monitor_state["source_id"] = None
+        if getattr(win, "_diagnostico_timer_id", None) == source_id:
+            win._diagnostico_timer_id = None
+        if refresh_state["disposed"] or not _is_rooted():
+            return False
+        paused = _diagnostico_esta_ocupado(win) or not _page_is_active()
+        if paused:
+            _set_monitor_paused(True)
+            _schedule_monitor()
+            return False
+        _set_monitor_paused(False)
+        if monitor_state["worker_running"]:
+            _schedule_monitor()
+            return False
+
+        if refresh_state["pending"] and not refresh_state["running"]:
+            _request_spec_refresh()
+            _schedule_monitor()
+            return False
+
+        monitor_state["worker_running"] = True
+        monitor_state["generation"] += 1
+        generation = monitor_state["generation"]
+        baseline_epoch = monitor_state["baseline_epoch"]
+
+        def worker():
+            try:
+                snapshot = _recoger_metricas_tiempo_real(win)
+            except Exception:
+                snapshot = {}
+            GLib.idle_add(
+                _apply_monitor_snapshot, generation, baseline_epoch, snapshot
+            )
+
+        threading.Thread(target=worker, daemon=True).start()
         return False
 
     # ── Barra de Herramientas / Cabecera ──
@@ -1155,7 +1656,7 @@ def setup_diagnostico_ui(win):
         tooltip_text="Actualizar especificaciones",
         css_classes=["flat"]
     )
-    btn_actualizar.connect('clicked', lambda _b: GLib.idle_add(poblar))
+    btn_actualizar.connect("clicked", _request_spec_refresh)
     header.pack_end(btn_actualizar)
 
     view = Adw.ToolbarView(content=pref_page)
@@ -1164,10 +1665,34 @@ def setup_diagnostico_ui(win):
     win.pag_diagnostico = Adw.NavigationPage(title="Diagnóstico", tag="page_e")
     win.pag_diagnostico.set_child(view)
 
-    # Lanzar la carga inicial de especificaciones
-    GLib.idle_add(poblar)
+    def _stop_runtime_sources():
+        _clear_monitor_source()
+        if radar:
+            radar.dispose_sources()
 
-    # Iniciar temporizador periódico para actualizar métricas en vivo
-    GLib.timeout_add(1500, actualizar_diagnostico_tiempo_real, win, widgets)
+    def _on_realize(*_args):
+        if refresh_state["disposed"]:
+            return
+        _set_monitor_paused(False)
+        _request_spec_refresh()
+        _schedule_monitor(100)
+
+    def _on_unrealize(*_args):
+        _set_monitor_paused(True)
+        _stop_runtime_sources()
+
+    def cleanup():
+        if refresh_state["disposed"]:
+            return
+        refresh_state["disposed"] = True
+        _stop_runtime_sources()
+
+    win._diagnostico_cleanup = cleanup
+    win._diagnostico_timer_id = None
+    pref_page.connect("realize", _on_realize)
+    pref_page.connect("unrealize", _on_unrealize)
+
+    if _is_rooted():
+        _on_realize()
 
     return win.pag_diagnostico

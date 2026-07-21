@@ -2,8 +2,12 @@
 Pestaña de Disponibilidad: Verificación de compatibilidad BPF de schedulers.
 """
 
+import hashlib
+import json
+import os
+import re
+import shutil
 import threading
-import time
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -11,7 +15,249 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from utils.helpers import log, limpiar_texto
-from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad, obtener_historial_compatibilidad
+from core.operations import OperationCancelled
+from core.scx import ScxState
+from core.database import (
+    cargar_compatibilidad,
+    limpiar_compatibilidad,
+    obtener_historial_compatibilidad,
+    reemplazar_compatibilidad,
+)
+
+
+_ANSI_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+_ERRORES_BPF = (
+    "failed to load bpf",
+    "failed to load bpf object",
+    "failed to load object",
+    "failed to load program",
+    "bpf program load failed",
+    "bpf prog load failed",
+    "libbpf: error",
+    "libbpf: failed",
+    "verifier error",
+    "verifier rejected",
+    "bpf verifier",
+    "verification failed",
+    "failed to attach",
+    "failed to register",
+    "relocation failed",
+    "unknown kfunc",
+    "unsupported kfunc",
+    "operation not permitted",
+    "permission denied",
+    "invalid argument",
+    "no such file or directory",
+    "segmentation fault",
+    "traceback (most recent call last)",
+)
+_PATRONES_EVIDENCIA_ARRANQUE = (
+    re.compile(
+        r"(?:(?:bpf|sched_ext|scx)\s+)?scheduler"
+        r"(?:\s+['\"\w.-]+)?\s+(?:has\s+)?started"
+        r"(?:\s+successfully)?[.!]?"
+    ),
+    re.compile(
+        r"started\s+(?:the\s+)?(?:(?:bpf|sched_ext|scx)\s+)?scheduler"
+        r"(?:\s+successfully)?[.!]?"
+    ),
+    re.compile(
+        r"(?:(?:bpf|sched_ext|scx)\s+)?scheduler\s+(?:is\s+)?running"
+        r"(?:\s+successfully)?[.!]?"
+    ),
+    re.compile(r"(?:struct_ops\s+registered|registered\s+struct_ops)(?:\s+successfully)?[.!]?"),
+    re.compile(r"sched_ext_ops\s+enabled(?:\s+successfully)?[.!]?"),
+    re.compile(r"(?:attached\s+sched_ext|sched_ext\s+attached)(?:\s+successfully)?[.!]?"),
+    re.compile(r"press\s+ctrl-c\s+to\s+(?:exit|stop|shutdown).*"),
+    re.compile(r"switching\s+all\s+tasks(?:\s+to\s+.+)?"),
+    re.compile(r"active"),
+)
+_FORMATO_CONTEXTO_COMPATIBILIDAD = "reactor.compatibility-context"
+_VERSION_CONTEXTO_COMPATIBILIDAD = 1
+_BINARIO_NO_CAPTURADO = object()
+
+
+def _detalle_salida_bpf(stdout, stderr, fallback):
+    texto = _ANSI_RE.sub("", f"{stdout or ''}\n{stderr or ''}")
+    lineas = [linea.strip() for linea in texto.splitlines() if linea.strip()]
+    return (lineas[-1] if lineas else fallback)[:500]
+
+
+def _hay_evidencia_arranque(normalizado):
+    for linea in normalizado.splitlines():
+        linea = linea.strip()
+        if not linea:
+            continue
+        linea = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", linea)
+        linea = re.sub(
+            r"^(?:info|notice|status)\b\s*[:\-]?\s*",
+            "",
+            linea,
+        )
+        if any(patron.fullmatch(linea) for patron in _PATRONES_EVIDENCIA_ARRANQUE):
+            return True
+    return False
+
+
+def _clasificar_salida_bpf(returncode, stdout="", stderr=""):
+    """Clasifica una ejecución BPF exigiendo evidencia positiva de arranque."""
+    try:
+        codigo = int(returncode)
+    except (TypeError, ValueError, OverflowError):
+        codigo = -1
+    combinado = f"{stdout or ''}\n{stderr or ''}"
+    normalizado = _ANSI_RE.sub("", combinado).casefold()
+    detalle = _detalle_salida_bpf(
+        stdout,
+        stderr,
+        f"Error de salida ({codigo})",
+    )
+
+    error_explicito = any(marcador in normalizado for marcador in _ERRORES_BPF)
+    error_de_linea = re.search(
+        r"(?im)^\s*(?:\[[^\]]*(?:error|fatal|panic)[^\]]*\]"
+        r"|(?:error|fatal|panic)(?:\s|:|$))",
+        normalizado,
+    )
+    if error_explicito or error_de_linea:
+        return False, detalle, False
+
+    evidencia_arranque = _hay_evidencia_arranque(normalizado)
+
+    if codigo in {124, 137}:
+        if evidencia_arranque:
+            return True, "Disponible (Residente)", False
+        return False, "Timeout sin evidencia de arranque o residencia", False
+
+    if codigo == 0:
+        if evidencia_arranque:
+            return True, "Disponible (Arranque verificado)", False
+        return False, "Finalizó sin evidencia de arranque o residencia", False
+
+    if evidencia_arranque:
+        return False, f"Arrancó pero terminó con error ({codigo}): {detalle}", False
+    return False, detalle, False
+
+
+def _compatibilidad_dev_determinista(nombre):
+    """Simula compatibilidad estable entre procesos y versiones de Python."""
+    datos = str(nombre).casefold().encode("utf-8", errors="replace")
+    valor = int.from_bytes(hashlib.sha256(datos).digest()[:8], "big") % 100
+    return valor < 75
+
+
+def _nombre_binario_scheduler(nombre):
+    nombre = str(nombre or "").strip()
+    return nombre if nombre.startswith("scx_") else f"scx_{nombre}"
+
+
+def _identidad_binario_scheduler(nombre):
+    nombre = str(nombre)
+    nombre_binario = _nombre_binario_scheduler(nombre)
+    identidad = {
+        "scheduler": nombre,
+        "name": nombre_binario,
+        "realpath": None,
+        "size": None,
+        "mtime_ns": None,
+        "missing": True,
+    }
+    try:
+        resuelto = shutil.which(nombre_binario)
+        if resuelto is None:
+            return identidad
+        ruta_real = os.path.realpath(os.fsdecode(os.fspath(resuelto)))
+        identidad["realpath"] = ruta_real
+        metadata = os.stat(ruta_real)
+        identidad.update(
+            size=int(metadata.st_size),
+            mtime_ns=int(metadata.st_mtime_ns),
+            missing=False,
+        )
+    except (OSError, TypeError, ValueError, OverflowError):
+        pass
+    return identidad
+
+
+def _capturar_contexto_compatibilidad(win, nombres):
+    versiones = getattr(win, "versiones", {}) or {}
+    schedulers = sorted(
+        _snapshot_nombres(win, nombres),
+        key=lambda nombre: (nombre.casefold(), nombre),
+    )
+    identidades = [
+        _identidad_binario_scheduler(nombre) for nombre in schedulers
+    ]
+    contexto = {
+        "format": _FORMATO_CONTEXTO_COMPATIBILIDAD,
+        "version": _VERSION_CONTEXTO_COMPATIBILIDAD,
+        "development_mode": bool(getattr(win, "modo_desarrollador", False)),
+        "versions": {
+            "kernel": (
+                None
+                if versiones.get("kernel") is None
+                else str(versiones.get("kernel"))
+            ),
+            "scxctl": (
+                None
+                if versiones.get("scxctl") is None
+                else str(versiones.get("scxctl"))
+            ),
+        },
+        "schedulers": identidades,
+    }
+    serializado = json.dumps(
+        contexto,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    clave = hashlib.sha256(serializado).hexdigest()
+    binarios = {
+        identidad["scheduler"]: (
+            None if identidad["missing"] else identidad["realpath"]
+        )
+        for identidad in identidades
+    }
+    return clave, binarios
+
+
+def contexto_compatibilidad_actual(win, nombres):
+    """Devuelve la identidad estable del entorno de compatibilidad actual."""
+    contexto, _binarios = _capturar_contexto_compatibilidad(win, nombres)
+    return contexto
+
+
+def _programar_ui(win, callback, *args):
+    programar = getattr(win, "ejecutar_en_ui", None)
+    if callable(programar):
+        return programar(callback, *args)
+    return GLib.idle_add(callback, *args)
+
+
+def _mostrar_toast(win, mensaje, *, alta=False):
+    mostrar = getattr(win, "mostrar_toast", None)
+    if callable(mostrar):
+        mostrar(mensaje, alta=alta)
+        return
+    toast = Adw.Toast.new(str(mensaje))
+    if alta:
+        toast.set_priority(Adw.ToastPriority.HIGH)
+    win.toast_overlay.add_toast(toast)
+
+
+def _mostrar_operacion_ocupada(win):
+    mostrar = getattr(win, "mostrar_operacion_ocupada", None)
+    if callable(mostrar):
+        mostrar()
+        return
+    state = win.operaciones.state
+    nombre = state.name if state is not None else "otra operación"
+    _mostrar_toast(
+        win,
+        f"Operación ocupada: '{nombre}' sigue en curso.",
+        alta=True,
+    )
 
 
 def _mensaje_corto(msg, compatible):
@@ -52,10 +298,160 @@ def _fade_in(widget, duration_ms=200):
     GLib.timeout_add(interval, _tick)
 
 
+def _nombres_desde_modelo(win):
+    modelo = getattr(win, "modelo_schedulers", None)
+    if modelo is None:
+        return ()
+    get_n_items = getattr(modelo, "get_n_items", None)
+    if not callable(get_n_items):
+        return ()
+
+    nombres = []
+    get_string = getattr(modelo, "get_string", None)
+    get_item = getattr(modelo, "get_item", None)
+    for indice in range(get_n_items()):
+        if callable(get_string):
+            nombre = get_string(indice)
+        elif callable(get_item):
+            item = get_item(indice)
+            item_get_string = getattr(item, "get_string", None)
+            nombre = item_get_string() if callable(item_get_string) else item
+        else:
+            break
+        nombres.append(nombre)
+    return tuple(nombres)
+
+
+def _snapshot_nombres(win, nombres=None):
+    valores = _nombres_desde_modelo(win) if nombres is None else nombres
+    if isinstance(valores, str):
+        valores = (valores,)
+    unicos = []
+    vistos = set()
+    for valor in valores or ():
+        if not isinstance(valor, str):
+            continue
+        nombre = valor.strip()
+        clave = nombre.casefold()
+        if not nombre or clave in vistos:
+            continue
+        vistos.add(clave)
+        unicos.append(nombre)
+    return tuple(unicos)
+
+
+def _compatibles_desde_cache(cache):
+    return [
+        nombre
+        for nombre, (compatible, _mensaje, _timestamp) in cache.items()
+        if compatible
+    ]
+
+
+def _cache_cubre_snapshot(cache, nombres):
+    return bool(cache) and set(cache) == set(nombres)
+
+
+def _cargar_snapshot_contextual(win, nombres):
+    versiones = getattr(win, "versiones", {}) or {}
+    kernel = str(versiones.get("kernel") or "")
+    for _intento in range(2):
+        contexto, binarios = _capturar_contexto_compatibilidad(win, nombres)
+        cache = (
+            cargar_compatibilidad(kernel, environment_key=contexto)
+            if kernel
+            else {}
+        )
+        contexto_final, binarios_finales = _capturar_contexto_compatibilidad(
+            win,
+            nombres,
+        )
+        if contexto_final != contexto or binarios_finales != binarios:
+            continue
+
+        cache = dict(cache or {})
+        verificada = _cache_cubre_snapshot(cache, nombres)
+        if not verificada:
+            cache = {}
+        compatibles = _compatibles_desde_cache(cache) if verificada else None
+        return contexto, cache, compatibles, verificada, binarios
+
+    return contexto_final, {}, None, False, binarios_finales
+
+
+def _refrescar_checklist_auto(win, nombres):
+    if not hasattr(win, "_auto_sched_checks"):
+        return
+    try:
+        if getattr(win, "compatibles", None) is None:
+            from ui.automatizacion import _invalidar_auto_schedulers
+
+            _invalidar_auto_schedulers(win)
+        else:
+            from ui.automatizacion import _refrescar_auto_schedulers
+
+            _refrescar_auto_schedulers(win, nombres=nombres)
+    except ImportError:
+        pass
+
+
+def _bloqueo_estado_disponibilidad(win):
+    bloqueo = getattr(win, "_disp_state_lock", None)
+    if bloqueo is None:
+        bloqueo = threading.Lock()
+        win._disp_state_lock = bloqueo
+    return bloqueo
+
+
+def _aplicar_cache_a_fila(row, spinner, icono, entrada):
+    spinner.set_visible(False)
+    icono.set_visible(True)
+    for css_class in ("success", "error", "dim-label", "warning"):
+        icono.remove_css_class(css_class)
+
+    if entrada is None:
+        row.set_subtitle("Sin verificar")
+        row.set_tooltip_text("")
+        icono.set_from_icon_name("dialog-question-symbolic")
+        icono.add_css_class("dim-label")
+        return
+
+    compatible, mensaje, _timestamp = entrada
+    row.set_subtitle(_mensaje_corto(mensaje, compatible))
+    row.set_tooltip_text(mensaje or "")
+    if compatible:
+        icono.set_from_icon_name("emblem-ok-symbolic")
+        icono.add_css_class("success")
+    else:
+        icono.set_from_icon_name("dialog-error-symbolic")
+        icono.add_css_class("error")
+
+
+def _aplicar_cache_a_filas(win, cache):
+    for nombre, (row, spinner, icono) in win._disp_filas.items():
+        _aplicar_cache_a_fila(row, spinner, icono, cache.get(nombre))
+
+
+def _crear_fila_disponibilidad(nombre, cache):
+    row = Adw.ActionRow(title=nombre)
+    suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+    spinner = Adw.Spinner()
+    spinner.set_visible(False)
+    icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
+    suffix_box.append(spinner)
+    suffix_box.append(icono)
+    row.add_suffix(suffix_box)
+    _aplicar_cache_a_fila(row, spinner, icono, cache.get(nombre))
+    return row, spinner, icono
+
+
 def setup_disponibilidad_ui(win):
     """Construye la interfaz de la pestaña Disponibilidad."""
     win._disp_filas = {}
     win._verificando = False
+    win._disp_generation = 0
+    win._disp_state_lock = threading.Lock()
+    win._compatibility_context = None
 
     pref_page = Adw.PreferencesPage()
     win._disp_pref_page = pref_page
@@ -65,44 +461,23 @@ def setup_disponibilidad_ui(win):
         description="Comprueba si el programa BPF de cada planificador puede cargarse en el kernel actual. La verificación requiere privilegios de administrador."
     )
 
-    try:
-        nombres = win.scx.obtener_lista()
-    except Exception:
-        nombres = []
-
-    kernel_actual = win.versiones.get("kernel", "")
-    cache = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
+    nombres = _snapshot_nombres(win)
+    (
+        contexto,
+        cache,
+        compatibles,
+        _verificada,
+        _binarios,
+    ) = _cargar_snapshot_contextual(win, nombres)
+    win._compatibility_context = contexto
+    win.compatibles = compatibles
 
     for nombre in nombres:
-        row = Adw.ActionRow(title=nombre)
-
-        suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
-        spinner = Adw.Spinner()
-        spinner.set_visible(False)
-        icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
-        icono.add_css_class("dim-label")
-        suffix_box.append(spinner)
-        suffix_box.append(icono)
-        row.add_suffix(suffix_box)
-
-        if nombre in cache:
-            compatible, mensaje, ts = cache[nombre]
-            if compatible:
-                icono.set_from_icon_name("emblem-ok-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("success")
-            else:
-                icono.set_from_icon_name("dialog-error-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("error")
-            row.set_subtitle(_mensaje_corto(mensaje, compatible))
-            if mensaje:
-                row.set_tooltip_text(mensaje)
-        else:
-            row.set_subtitle("Sin verificar")
-
+        row, spinner, icono = _crear_fila_disponibilidad(nombre, cache)
         win._disp_filas[nombre] = (row, spinner, icono)
         grupo.add(row)
+
+    _refrescar_checklist_auto(win, nombres)
 
     win._disp_grupo_scheds = grupo
     pref_page.add(grupo)
@@ -134,29 +509,36 @@ def setup_disponibilidad_ui(win):
     win._btn_verificar_disp.connect("clicked", lambda b: iniciar_verificacion(win, b))
     header.pack_start(win._btn_verificar_disp)
 
-    btn_limpiar = Gtk.Button(
+    win._btn_limpiar_disp = Gtk.Button(
         icon_name="user-trash-symbolic",
         tooltip_text="Limpiar caché de compatibilidad",
         css_classes=["flat"],
         valign=Gtk.Align.CENTER
     )
-    btn_limpiar.connect("clicked", lambda b: _limpiar_cache(win))
-    header.pack_end(btn_limpiar)
+    win._btn_limpiar_disp.connect("clicked", lambda _button: _limpiar_cache(win))
+    header.pack_end(win._btn_limpiar_disp)
 
     view = Adw.ToolbarView(content=pref_page)
     view.add_top_bar(header)
     win.pag_disponibilidad.set_child(view)
 
 
-def recargar_disponibilidad_ui(win):
-    """Refresca la lista de schedulers en disponibilidad al cambiar modo simulación, sin destruir la página."""
-    try:
-        nuevos = win.scx.obtener_lista()
-    except Exception:
-        nuevos = []
-
-    kernel_actual = win.versiones.get("kernel", "")
-    cache = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
+def recargar_disponibilidad_ui(win, nombres=None):
+    """Refresca filas desde un snapshot ya obtenido fuera del hilo GTK."""
+    nuevos = _snapshot_nombres(win, nombres)
+    with _bloqueo_estado_disponibilidad(win):
+        (
+            contexto,
+            cache,
+            compatibles,
+            verificada,
+            _binarios,
+        ) = _cargar_snapshot_contextual(win, nuevos)
+        win._disp_generation = int(
+            getattr(win, "_disp_generation", 0) or 0
+        ) + 1
+        win._compatibility_context = contexto
+        win.compatibles = compatibles
 
     antiguos = set(win._disp_filas.keys())
     nuevos_set = set(nuevos)
@@ -169,37 +551,21 @@ def recargar_disponibilidad_ui(win):
         grupo.remove(row)
 
     # Añadir filas nuevas
-    for nombre in nuevos_set - antiguos:
-        row = Adw.ActionRow(title=nombre)
-
-        suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
-        spinner = Adw.Spinner()
-        spinner.set_visible(False)
-        icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
-        icono.add_css_class("dim-label")
-        suffix_box.append(spinner)
-        suffix_box.append(icono)
-        row.add_suffix(suffix_box)
-
-        if nombre in cache:
-            compatible, mensaje, ts = cache[nombre]
-            if compatible:
-                icono.set_from_icon_name("emblem-ok-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("success")
-            else:
-                icono.set_from_icon_name("dialog-error-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("error")
-            row.set_subtitle(_mensaje_corto(mensaje, compatible))
-            if mensaje:
-                row.set_tooltip_text(mensaje)
-        else:
-            row.set_subtitle("Sin verificar")
-
+    for nombre in nuevos:
+        if nombre in antiguos:
+            continue
+        row, spinner, icono = _crear_fila_disponibilidad(nombre, cache)
         win._disp_filas[nombre] = (row, spinner, icono)
         grupo.add(row)
 
+    _aplicar_cache_a_filas(win, cache)
+    _refrescar_checklist_auto(win, nuevos)
+    if hasattr(win, "nav_disponibilidad"):
+        _actualizar_badge_compatibilidad(
+            win,
+            win.compatibles or (),
+            verificada,
+        )
     _refrescar_historial_compat(win)
 
 
@@ -226,7 +592,16 @@ def _actualizar_fila(r, s, i, ok, texto, warn):
 
 def _limpiar_cache(win):
     """Limpia la caché de compatibilidad y resetea las filas."""
-    limpiar_compatibilidad()
+    if win._verificando:
+        _mostrar_toast(win, "Espere a que termine la verificación activa.")
+        return
+    with _bloqueo_estado_disponibilidad(win):
+        limpiar_compatibilidad()
+        win._disp_generation = int(
+            getattr(win, "_disp_generation", 0) or 0
+        ) + 1
+        win._compatibility_context = None
+    win.compatibles = None
     for nombre, (row, spinner, icono) in win._disp_filas.items():
         row.set_subtitle("Sin verificar")
         row.set_tooltip_text("")
@@ -235,6 +610,18 @@ def _limpiar_cache(win):
         icono.remove_css_class("error")
         icono.remove_css_class("warning")
         icono.add_css_class("dim-label")
+    win.nav_disponibilidad.add_css_class("pulse-warning")
+    imagen = win.nav_disponibilidad.get_child().get_first_child()
+    if isinstance(imagen, Gtk.Image):
+        for clase in ("success", "error"):
+            imagen.remove_css_class(clase)
+        imagen.set_from_icon_name("dialog-information-symbolic")
+    try:
+        from ui.automatizacion import _invalidar_auto_schedulers
+
+        _invalidar_auto_schedulers(win)
+    except ImportError:
+        pass
     _refrescar_historial_compat(win)
     log(win.text_view_logs_disp, "Caché de compatibilidad limpiada", True)
 
@@ -257,10 +644,9 @@ def _refrescar_historial_compat(win):
 
     scheds = sorted(win._disp_filas.keys())
     if not scheds:
-        try:
-            scheds = sorted(win.scx.obtener_lista())
-        except Exception:
-            scheds = sorted(set(d["scheduler_name"] for d in datos))
+        scheds = sorted(_snapshot_nombres(win))
+    if not scheds:
+        scheds = sorted(set(d["scheduler_name"] for d in datos))
 
     agregados = []
     for sched in scheds:
@@ -333,129 +719,545 @@ def _refrescar_historial_compat(win):
     win._disp_pref_page.add(win._disp_grupo_historial)
 
 
-def iniciar_verificacion(win, btn=None):
-    """Inicia la verificación de compatibilidad BPF de todos los schedulers."""
-    if win._verificando:
+def _marcar_fila_verificando(row, spinner, icono):
+    row.set_subtitle("Verificando...")
+    icono.set_visible(False)
+    spinner.set_visible(True)
+
+
+def _actualizar_badge_compatibilidad(win, compatibles, verificada):
+    imagen = win.nav_disponibilidad.get_child().get_first_child()
+    if not verificada:
+        win.nav_disponibilidad.add_css_class("pulse-warning")
+        if isinstance(imagen, Gtk.Image):
+            for clase in ("success", "error"):
+                imagen.remove_css_class(clase)
+            imagen.set_from_icon_name("dialog-information-symbolic")
         return
 
-    def _proceder():
-        def _ejecutar():
-            win._verificando = True
-            lista_exitosos = []
-            GLib.idle_add(win._btn_verificar_disp.set_sensitive, False)
-            log(win.text_view_logs_disp, "INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF", True)
+    win.nav_disponibilidad.remove_css_class("pulse-warning")
+    if not isinstance(imagen, Gtk.Image):
+        return
+    for clase in ("success", "error"):
+        imagen.remove_css_class(clase)
+    if compatibles:
+        imagen.set_from_icon_name("emblem-ok-symbolic")
+        imagen.add_css_class("success")
+    else:
+        imagen.set_from_icon_name("dialog-error-symbolic")
+        imagen.add_css_class("error")
 
-            # Limpieza nuclear preventiva
-            win.scx.detener_todos()
-            time.sleep(1.5)
 
-            for nombre, (row, spinner, icono) in list(win._disp_filas.items()):
-                if win.modo_desarrollador:
-                    time.sleep(0.1)
-                    hash_val = hash(nombre) % 100
-                    disponible = hash_val < 75
-                    msg = "Disponible (Simulado)" if disponible else "Error: Programa incompatible (Simulado)"
-                    is_warn = False
-                    if disponible:
-                        lista_exitosos.append(nombre)
+def _verificar_binario_bpf(
+    scx_manager,
+    token,
+    nombre,
+    timeout_bin,
+    log_view,
+    binario_capturado=_BINARIO_NO_CAPTURADO,
+):
+    token.raise_if_cancelled()
+    binario_nombre = _nombre_binario_scheduler(nombre)
+    if binario_capturado is _BINARIO_NO_CAPTURADO:
+        try:
+            binario = shutil.which(binario_nombre)
+        except (OSError, TypeError) as exc:
+            return False, f"No se pudo resolver {binario_nombre}: {exc}", False
+    else:
+        binario = binario_capturado
+    if not binario:
+        return False, f"Binario {binario_nombre} no encontrado en PATH", False
+    if not timeout_bin:
+        return False, "Binario timeout no encontrado en PATH", False
 
-                    kv_sim = win.versiones.get("kernel", "7.1.3-347.current")
-                    guardar_compatibilidad(nombre, kv_sim, disponible, msg)
-                    GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg, w=is_warn:
-                                  _actualizar_fila(r, s, i, ok, t, w))
-                    continue
+    token.raise_if_cancelled()
+    log(log_view, f"Probando {binario_nombre} ({binario})...")
+    resultado = scx_manager.ejecutar_con_sudo(
+        [timeout_bin, "-k", "1", "5", binario],
+        timeout=8,
+        cancel_token=token,
+    )
+    token.raise_if_cancelled()
+    salida = f"{resultado.stdout or ''}\n{resultado.stderr or ''}".strip()
+    if salida:
+        limpia = limpiar_texto(salida)
+        if limpia:
+            log(log_view, f"Resumen de {binario_nombre}:\n{limpia}")
+    return _clasificar_salida_bpf(
+        resultado.returncode,
+        resultado.stdout,
+        resultado.stderr,
+    )
 
-                def _reset(r=row, s=spinner, i=icono):
-                    r.set_subtitle("Verificando...")
-                    i.set_visible(False)
-                    s.set_visible(True)
-                GLib.idle_add(_reset)
 
-                disponible = False
-                is_warn = False
-                msg = "Desconocido"
+def _asegurar_snapshot_verificacion_vigente(
+    win,
+    generacion,
+    modo_desarrollador,
+    contexto=None,
+    nombres=None,
+):
+    if (
+        generacion != getattr(win, "_disp_generation", None)
+        or modo_desarrollador
+        != bool(getattr(win, "modo_desarrollador", False))
+    ):
+        raise RuntimeError(
+            "Cambió la lista, el modo o el contexto durante la verificación."
+        )
 
-                try:
-                    win.scx.detener_todos()
-                    time.sleep(0.3)
+    if nombres is not None:
+        filas_actuales = getattr(win, "_disp_filas", None)
+        if filas_actuales is not None and tuple(filas_actuales) != tuple(nombres):
+            raise RuntimeError(
+                "Cambió la lista, el modo o el contexto durante la verificación."
+            )
 
-                    log(win.text_view_logs_disp, f"Probando scx_{nombre}...")
-                    result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", f"/usr/bin/scx_{nombre}"])
-                    output = (result.stdout + result.stderr).strip()
+    if contexto is None:
+        return
+    if getattr(win, "_compatibility_context", contexto) != contexto:
+        raise RuntimeError(
+            "Cambió la lista, el modo o el contexto durante la verificación."
+        )
+    if contexto_compatibilidad_actual(win, nombres or ()) != contexto:
+        raise RuntimeError(
+            "Cambió la lista, el modo o el contexto durante la verificación."
+        )
 
-                    if output:
-                        output_limpio = limpiar_texto(output)
-                        if output_limpio:
-                            log(win.text_view_logs_disp, f"Resumen de scx_{nombre}:\n{output_limpio}")
 
-                    has_error = any(kw in output for kw in [
-                        "Failed to load BPF", "No such file or directory", "Error:"
-                    ])
+def _aplicar_ui_verificacion_si_vigente(
+    win,
+    generacion,
+    modo_desarrollador,
+    contexto,
+    nombres,
+    callback,
+    *args,
+):
+    if not bool(getattr(win, "_verificando", True)):
+        return False
+    try:
+        _asegurar_snapshot_verificacion_vigente(
+            win,
+            generacion,
+            modo_desarrollador,
+            contexto,
+            nombres,
+        )
+    except RuntimeError:
+        return False
+    callback(*args)
+    return False
 
-                    if has_error:
-                        disponible = False
-                        lineas = [l for l in output.splitlines() if l.strip() and "[INFO]" not in l]
-                        msg = lineas[-1].strip() if lineas else "Programa BPF incompatible"
+
+def _worker_verificacion(
+    win,
+    handle,
+    scx_manager,
+    filas,
+    modo_desarrollador,
+    kernel,
+    log_view,
+    cache_anterior=None,
+    compatibles_anteriores=None,
+    cache_verificada_anterior=None,
+    generacion=None,
+    contexto=None,
+    nombres_snapshot=None,
+    binarios_snapshot=None,
+):
+    cache_anterior = dict(cache_anterior or {})
+    if compatibles_anteriores is not None:
+        compatibles_anteriores = list(compatibles_anteriores)
+    if cache_verificada_anterior is None:
+        cache_verificada_anterior = (
+            bool(cache_anterior) or compatibles_anteriores is not None
+        )
+    if nombres_snapshot is None:
+        nombres_snapshot = tuple(nombre for nombre, *_resto in filas)
+    else:
+        nombres_snapshot = tuple(nombres_snapshot)
+    if binarios_snapshot is None:
+        contexto_actual, binarios_snapshot = _capturar_contexto_compatibilidad(
+            win,
+            nombres_snapshot,
+        )
+        if contexto is None:
+            contexto = contexto_actual
+    else:
+        binarios_snapshot = dict(binarios_snapshot)
+    if contexto is None:
+        contexto = contexto_compatibilidad_actual(win, nombres_snapshot)
+    verificaciones = []
+    completada = False
+    cancelada = False
+    error = None
+    sesion = None
+    try:
+        try:
+            timeout_bin = None if modo_desarrollador else shutil.which("timeout")
+            _asegurar_snapshot_verificacion_vigente(
+                win,
+                generacion,
+                modo_desarrollador,
+                contexto,
+                nombres_snapshot,
+            )
+            with scx_manager.sesion(handle.token) as sesion:
+                for nombre, row, spinner, icono in filas:
+                    handle.check_cancelled()
+                    _asegurar_snapshot_verificacion_vigente(
+                        win,
+                        generacion,
+                        modo_desarrollador,
+                        contexto,
+                        nombres_snapshot,
+                    )
+                    sesion.aplicar(ScxState())
+                    handle.check_cancelled()
+                    _asegurar_snapshot_verificacion_vigente(
+                        win,
+                        generacion,
+                        modo_desarrollador,
+                        contexto,
+                        nombres_snapshot,
+                    )
+                    _programar_ui(
+                        win,
+                        _aplicar_ui_verificacion_si_vigente,
+                        win,
+                        generacion,
+                        modo_desarrollador,
+                        contexto,
+                        nombres_snapshot,
+                        _marcar_fila_verificando,
+                        row,
+                        spinner,
+                        icono,
+                    )
+                    if modo_desarrollador:
+                        disponible = _compatibilidad_dev_determinista(nombre)
+                        mensaje = (
+                            "Disponible (Simulado determinista)"
+                            if disponible
+                            else "Programa incompatible (Simulado determinista)"
+                        )
+                        advertencia = False
                     else:
-                        log_success_keywords = ["Calibration complete", "scheduler started", "Received shutdown signal", "ACTIVE"]
-                        started_ok = any(kw in output for kw in log_success_keywords)
+                        disponible, mensaje, advertencia = _verificar_binario_bpf(
+                            scx_manager,
+                            handle.token,
+                            nombre,
+                            timeout_bin,
+                            log_view,
+                            binarios_snapshot.get(nombre),
+                        )
+                    handle.check_cancelled()
+                    _asegurar_snapshot_verificacion_vigente(
+                        win,
+                        generacion,
+                        modo_desarrollador,
+                        contexto,
+                        nombres_snapshot,
+                    )
+                    verificaciones.append((nombre, disponible, mensaje))
+                    _programar_ui(
+                        win,
+                        _aplicar_ui_verificacion_si_vigente,
+                        win,
+                        generacion,
+                        modo_desarrollador,
+                        contexto,
+                        nombres_snapshot,
+                        _actualizar_fila,
+                        row,
+                        spinner,
+                        icono,
+                        disponible,
+                        mensaje,
+                        advertencia,
+                    )
+                handle.check_cancelled()
+                _asegurar_snapshot_verificacion_vigente(
+                    win,
+                    generacion,
+                    modo_desarrollador,
+                    contexto,
+                    nombres_snapshot,
+                )
+            restore_error = getattr(sesion, "restore_error", None)
+            if restore_error is not None:
+                detalle = RuntimeError(
+                    f"Falló la restauración SCX: {restore_error}"
+                )
+                if isinstance(restore_error, BaseException):
+                    raise detalle from restore_error
+                raise detalle
+            if not handle.token.seal():
+                raise OperationCancelled("La operación fue cancelada.")
+            with _bloqueo_estado_disponibilidad(win):
+                _asegurar_snapshot_verificacion_vigente(
+                    win,
+                    generacion,
+                    modo_desarrollador,
+                    contexto,
+                    nombres_snapshot,
+                )
+                reemplazar_compatibilidad(
+                    kernel,
+                    tuple(verificaciones),
+                    environment_key=contexto,
+                )
+            completada = True
+            log(log_view, "VERIFICACIÓN FINALIZADA", True)
+        except OperationCancelled:
+            cancelada = True
+            restore_error = getattr(sesion, "restore_error", None)
+            if restore_error is not None:
+                error = f"Falló la restauración SCX: {restore_error}"
+            log(log_view, "VERIFICACIÓN CANCELADA", True)
+        except Exception as exc:
+            error = str(exc) or exc.__class__.__name__
+            restore_error = getattr(sesion, "restore_error", None)
+            if restore_error is not None and restore_error is not exc:
+                error += f"; además falló la restauración SCX: {restore_error}"
+            log(log_view, f"Error durante la verificación: {error}", es_error=True)
+    except Exception as exc:
+        error = str(exc) or exc.__class__.__name__
+        log(log_view, f"Error exterior de verificación: {error}", es_error=True)
+    finally:
+        handle.release()
+        _programar_ui(
+            win,
+            _finalizar_verificacion,
+            win,
+            tuple(verificaciones),
+            completada,
+            cancelada,
+            error,
+            cache_anterior,
+            compatibles_anteriores,
+            bool(cache_verificada_anterior),
+            modo_desarrollador,
+            generacion,
+            contexto,
+            nombres_snapshot,
+        )
 
-                        if result.returncode in [0, 124, 137] or started_ok:
-                            disponible = True
-                            is_warn = (result.returncode == 0 and not started_ok)
 
-                            if started_ok:
-                                msg = "Disponible (Verificado)"
-                            elif result.returncode in [124, 137]:
-                                msg = "Disponible (Residente)"
-                            else:
-                                msg = "Disponible (Shutdown detectado)"
+def _finalizar_verificacion(
+    win,
+    verificaciones,
+    completada,
+    cancelada,
+    error,
+    cache_anterior=None,
+    compatibles_anteriores=None,
+    cache_verificada_anterior=False,
+    modo_verificado=None,
+    generacion=None,
+    contexto_verificado=None,
+    nombres_snapshot=None,
+):
+    win._verificando = False
+    win._btn_verificar_disp.set_sensitive(True)
+    win._btn_limpiar_disp.set_sensitive(True)
+    snapshot_obsoleto = (
+        generacion is not None
+        and generacion != getattr(win, "_disp_generation", None)
+    )
+    modo_obsoleto = (
+        isinstance(modo_verificado, bool)
+        and modo_verificado
+        != bool(getattr(win, "modo_desarrollador", False))
+    )
+    nombres_capturados = (
+        None if nombres_snapshot is None else tuple(nombres_snapshot)
+    )
+    nombres_actuales = tuple(getattr(win, "_disp_filas", {}))
+    lista_obsoleta = (
+        nombres_capturados is not None
+        and nombres_actuales != nombres_capturados
+    )
+    contexto_obsoleto = False
+    if contexto_verificado is not None:
+        contexto_obsoleto = (
+            getattr(win, "_compatibility_context", contexto_verificado)
+            != contexto_verificado
+            or contexto_compatibilidad_actual(
+                win,
+                nombres_capturados or (),
+            )
+            != contexto_verificado
+        )
+    if modo_obsoleto or snapshot_obsoleto or lista_obsoleta or contexto_obsoleto:
+        nombres_actuales = nombres_actuales or _snapshot_nombres(win)
+        recargar_disponibilidad_ui(win, nombres_actuales)
+        _mostrar_toast(
+            win,
+            "Se descartó una verificación de un contexto anterior.",
+        )
+        return
 
-                            lista_exitosos.append(nombre)
-                        else:
-                            disponible = False
-                            lineas = [l for l in output.splitlines() if l.strip()]
-                            msg = lineas[-1].strip() if lineas else f"Error de salida ({result.returncode})"
+    nombres = nombres_actuales
+    nombres_verificados = tuple(
+        nombre for nombre, _compatible, _mensaje in verificaciones
+    )
+    if completada and nombres_verificados != nombres:
+        recargar_disponibilidad_ui(win, nombres)
+        _mostrar_toast(
+            win,
+            "Cambió la lista de schedulers; vuelva a verificar la compatibilidad.",
+            alta=True,
+        )
+        return
 
-                except Exception as e:
-                    disponible = False
-                    msg = str(e)
+    if completada:
+        if contexto_verificado is not None:
+            win._compatibility_context = contexto_verificado
+        win.compatibles = [
+            nombre
+            for nombre, compatible, _mensaje in verificaciones
+            if compatible
+        ]
+        cache_nueva = {
+            nombre: (compatible, mensaje, None)
+            for nombre, compatible, mensaje in verificaciones
+        }
+        _aplicar_cache_a_filas(win, cache_nueva)
+        _actualizar_badge_compatibilidad(win, win.compatibles, True)
+        _refrescar_checklist_auto(win, nombres)
+        _mostrar_toast(
+            win,
+            f"Compatibilidad verificada: {len(win.compatibles)} scheduler(s).",
+        )
+    else:
+        win.compatibles = (
+            None
+            if compatibles_anteriores is None
+            else list(compatibles_anteriores)
+        )
+        _aplicar_cache_a_filas(win, dict(cache_anterior or {}))
+        _actualizar_badge_compatibilidad(
+            win,
+            win.compatibles or (),
+            bool(cache_verificada_anterior),
+        )
+        _refrescar_checklist_auto(win, nombres)
+        if error:
+            _mostrar_toast(win, f"Falló la verificación: {error}", alta=True)
+        elif cancelada:
+            _mostrar_toast(win, "Verificación de compatibilidad cancelada.")
 
-                msg_safe = GLib.markup_escape_text(msg)
+    _refrescar_historial_compat(win)
+    sincronizar = getattr(win, "sincronizar_sistema", None)
+    if callable(sincronizar):
+        sincronizar()
 
-                guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg_safe)
-                GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg_safe, w=is_warn:
-                              _actualizar_fila(r, s, i, ok, t, w))
-                win.scx.ejecutar_con_sudo(["scxctl", "stop"])
 
-            log(win.text_view_logs_disp, "VERIFICACIÓN FINALIZADA", True)
-            win.compatibles = lista_exitosos
-            GLib.idle_add(lambda: _refrescar_historial_compat(win))
-            try:
-                from ui.automatizacion import _refrescar_auto_schedulers
-                GLib.idle_add(lambda: _refrescar_auto_schedulers(win))
-            except ImportError:
-                pass
+def iniciar_verificacion(win, btn=None):
+    """Inicia una verificación BPF exclusiva y restaurable."""
+    if win._verificando:
+        _mostrar_toast(win, "La verificación ya está en curso.")
+        return
 
-            def _update_badge():
-                win.nav_disponibilidad.remove_css_class("pulse-warning")
-                img = win.nav_disponibilidad.get_child().get_first_child()
-                if isinstance(img, Gtk.Image):
-                    for cls in ["success", "error"]:
-                        img.remove_css_class(cls)
+    if not win._disp_filas:
+        _mostrar_toast(win, "No hay schedulers para verificar.", alta=True)
+        return
 
-                    if lista_exitosos:
-                        img.set_from_icon_name("emblem-ok-symbolic")
-                        img.add_css_class("success")
-                    else:
-                        img.set_from_icon_name("dialog-error-symbolic")
-                        img.add_css_class("error")
-            GLib.idle_add(_update_badge)
+    modo_desarrollador = bool(win.modo_desarrollador)
 
-            GLib.idle_add(win.sincronizar_sistema)
-            GLib.idle_add(win._btn_verificar_disp.set_sensitive, True)
-            win._verificando = False
+    def proceder():
+        if win._verificando:
+            _mostrar_toast(win, "La verificación ya está en curso.")
+            return
+        if modo_desarrollador != bool(win.modo_desarrollador):
+            _mostrar_toast(
+                win,
+                "El modo cambió durante la autorización; repita la verificación.",
+                alta=True,
+            )
+            return
 
-        threading.Thread(target=_ejecutar, daemon=True).start()
+        filas = tuple(
+            (nombre, row, spinner, icono)
+            for nombre, (row, spinner, icono) in win._disp_filas.items()
+        )
+        if not filas:
+            _mostrar_toast(win, "No hay schedulers para verificar.", alta=True)
+            return
 
-    win.solicitar_sudo_si_necesario(_proceder)
+        nombres_snapshot = tuple(nombre for nombre, *_resto in filas)
+        with _bloqueo_estado_disponibilidad(win):
+            (
+                contexto,
+                cache_anterior,
+                compatibles_anteriores,
+                cache_verificada_anterior,
+                binarios_snapshot,
+            ) = _cargar_snapshot_contextual(win, nombres_snapshot)
+            if contexto != getattr(win, "_compatibility_context", None):
+                win._disp_generation = int(
+                    getattr(win, "_disp_generation", 0) or 0
+                ) + 1
+            win._compatibility_context = contexto
+            win.compatibles = (
+                None
+                if compatibles_anteriores is None
+                else list(compatibles_anteriores)
+            )
+            generacion = getattr(win, "_disp_generation", 0)
+        _aplicar_cache_a_filas(win, cache_anterior)
+        _refrescar_checklist_auto(win, nombres_snapshot)
+
+        versiones = getattr(win, "versiones", {}) or {}
+        kernel = str(versiones.get("kernel") or "")
+
+        handle = win.operaciones.try_acquire("verificacion de compatibilidad")
+        if handle is None:
+            _mostrar_operacion_ocupada(win)
+            return
+
+        scx_manager = win.scx
+        log_view = win.text_view_logs_disp
+        win._verificando = True
+        win._btn_verificar_disp.set_sensitive(False)
+        win._btn_limpiar_disp.set_sensitive(False)
+        log(log_view, "INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF", True)
+
+        worker = lambda: _worker_verificacion(
+            win,
+            handle,
+            scx_manager,
+            filas,
+            modo_desarrollador,
+            kernel,
+            log_view,
+            cache_anterior,
+            compatibles_anteriores,
+            cache_verificada_anterior,
+            generacion,
+            contexto,
+            nombres_snapshot,
+            binarios_snapshot,
+        )
+        try:
+            threading.Thread(target=worker).start()
+        except Exception as exc:
+            handle.release()
+            _finalizar_verificacion(
+                win,
+                [],
+                False,
+                False,
+                str(exc) or exc.__class__.__name__,
+                cache_anterior,
+                compatibles_anteriores,
+                cache_verificada_anterior,
+                modo_desarrollador,
+                generacion,
+                contexto,
+                nombres_snapshot,
+            )
+
+    win.solicitar_sudo_si_necesario(proceder)

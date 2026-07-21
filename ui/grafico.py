@@ -4,6 +4,8 @@ Visualiza múltiples categorías como un polígono superpuesto.
 """
 
 import math
+from collections.abc import Mapping
+from numbers import Real
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -16,7 +18,55 @@ try:
 except ImportError:
     _HAS_CAIRO = False
 
-from utils.helpers import generar_color_hash, obtener_color_tema
+_TICK_INTERVAL_MS = 16
+
+
+def _numero_finito(valor):
+    if isinstance(valor, bool) or not isinstance(valor, Real):
+        return None
+    try:
+        numero = float(valor)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def _numero_no_negativo(valor):
+    numero = _numero_finito(valor)
+    return numero if numero is not None and numero >= 0.0 else None
+
+
+def _redimensionar_vector(valores, longitud):
+    """Devuelve un vector finito, no negativo y con longitud estable."""
+    try:
+        valores = list(valores)
+    except TypeError:
+        valores = []
+    resultado = []
+    for indice in range(longitud):
+        valor = valores[indice] if indice < len(valores) else 0.0
+        resultado.append(_numero_no_negativo(valor) or 0.0)
+    return resultado
+
+
+def _fraccion_radial(porcentaje):
+    """Convierte un porcentaje animado en radio sin falsear los ceros."""
+    valor = _numero_no_negativo(porcentaje)
+    if valor is None:
+        return 0.0
+    return min(0.98, valor / 100.0)
+
+
+def _generar_color_hash(nombre):
+    from utils.helpers import generar_color_hash
+
+    return generar_color_hash(nombre)
+
+
+def _obtener_color_tema(nombre):
+    from utils.helpers import obtener_color_tema
+
+    return obtener_color_tema(nombre)
 
 
 class GraficoComparativo(Gtk.DrawingArea):
@@ -24,13 +74,12 @@ class GraficoComparativo(Gtk.DrawingArea):
     def __init__(self):
         super().__init__()
         self.set_draw_func(self.dibujar)
-        self.num_categorias = 6
-        self.categorias = [
+        self._categorias = [
             "Context\nSwitch", "Carga\nMixta", "Mutex",
             "Fork", "Compile", "Bajo\nCarga"
         ]
-        self.datos_raw = {}
-        self.valores_animados = {}
+        self._datos_raw = {}
+        self._valores_animados = {}
         self.max_por_categoria = [0.0] * self.num_categorias
         self.max_animados = [0.0] * self.num_categorias
         self.ocultos = set()
@@ -47,32 +96,263 @@ class GraficoComparativo(Gtk.DrawingArea):
         self._hover_x = 0.0
         self._hover_y = 0.0
         self._pulse_active = False
+        self._pulse_t = 0.0
+        self._tick_source_id = None
+        self._tick_suspended = False
 
         ev_motion = Gtk.EventControllerMotion()
         ev_motion.connect("motion", self.on_mouse_move)
         ev_motion.connect("leave", self.on_mouse_leave)
         self.add_controller(ev_motion)
+        self.connect("unrealize", self._on_unrealize)
+        self.connect("realize", self._on_realize)
+        self.connect("destroy", self._on_destroy)
 
-        GLib.timeout_add(16, self.tick)
+    @property
+    def num_categorias(self):
+        return len(self._categorias)
+
+    @num_categorias.setter
+    def num_categorias(self, cantidad):
+        if isinstance(cantidad, bool) or not isinstance(cantidad, int) or cantidad < 0:
+            raise ValueError("num_categorias debe ser un entero no negativo")
+        actuales = list(self._categorias)
+        if cantidad > len(actuales):
+            actuales.extend(
+                f"Categoría {indice + 1}"
+                for indice in range(len(actuales), cantidad)
+            )
+        self._categorias = actuales[:cantidad]
+        self._sincronizar_formas()
+        self.queue_draw()
+        self._asegurar_tick()
+
+    @property
+    def categorias(self):
+        return self._categorias
+
+    @categorias.setter
+    def categorias(self, categorias):
+        try:
+            nuevas = [str(categoria) for categoria in categorias]
+        except TypeError as exc:
+            raise ValueError("categorias debe ser una secuencia") from exc
+        self._categorias = nuevas
+        self._sincronizar_formas()
+        self.queue_draw()
+        self._asegurar_tick()
+
+    @property
+    def datos_raw(self):
+        return self._datos_raw
+
+    @datos_raw.setter
+    def datos_raw(self, datos):
+        if not datos and hasattr(self, "_datos_raw"):
+            # Compatibilidad con los consumidores que históricamente vaciaban
+            # este atributo en vez de llamar a reset().
+            self._reset_estado(preservar_colores=True, preservar_pulso=True)
+            return
+        if not isinstance(datos, Mapping):
+            raise ValueError("datos_raw debe ser un mapping")
+        self._datos_raw = dict(datos)
+        self._sincronizar_formas()
+        self.queue_draw()
+        self._asegurar_tick()
+
+    @property
+    def valores_animados(self):
+        return self._valores_animados
+
+    @valores_animados.setter
+    def valores_animados(self, valores):
+        if not valores and not self._datos_raw:
+            self._reset_estado(preservar_colores=True, preservar_pulso=True)
+            return
+        if not isinstance(valores, Mapping):
+            raise ValueError("valores_animados debe ser un mapping")
+        self._valores_animados = dict(valores)
+        self._sincronizar_formas()
+        self.queue_draw()
+        self._asegurar_tick()
+
+    def _sincronizar_formas(self):
+        if not hasattr(self, "_datos_raw"):
+            return
+        n = self.num_categorias
+        self._datos_raw = {
+            str(scheduler): _redimensionar_vector(valores, n)
+            for scheduler, valores in self._datos_raw.items()
+        }
+        self._valores_animados = {
+            scheduler: _redimensionar_vector(
+                self._valores_animados.get(scheduler, ()), n
+            )
+            for scheduler in self._datos_raw
+        }
+        self.max_por_categoria = _redimensionar_vector(
+            getattr(self, "max_por_categoria", ()), n
+        )
+        self.max_animados = _redimensionar_vector(
+            getattr(self, "max_animados", ()), n
+        )
+
+        if hasattr(self, "focus_animado"):
+            self.focus_animado = {
+                scheduler: min(
+                    1.0,
+                    max(
+                        0.0,
+                        _numero_finito(self.focus_animado.get(scheduler, 0.5))
+                        or 0.0,
+                    ),
+                )
+                for scheduler in self._datos_raw
+            }
+        if hasattr(self, "ocultos"):
+            self.ocultos.intersection_update(self._datos_raw)
+        if getattr(self, "highlight_sc", None) not in self._datos_raw:
+            self.highlight_sc = None
+        self._recalcular_maximos()
+
+    def _recalcular_maximos(self):
+        n = self.num_categorias
+        self.max_por_categoria = [
+            max(
+                (valores[indice] for valores in self._datos_raw.values()),
+                default=0.0,
+            )
+            for indice in range(n)
+        ]
+
+    def _hay_animacion_pendiente(self):
+        if self._pulse_active:
+            return True
+        for scheduler, puntos in self._datos_raw.items():
+            animados = self._valores_animados.get(scheduler, ())
+            for indice, valor in enumerate(puntos):
+                maximo = self.max_por_categoria[indice]
+                objetivo = (valor / maximo) * 100.0 if maximo > 0.0 else 0.0
+                if indice >= len(animados) or abs(objetivo - animados[indice]) > 0.5:
+                    return True
+            objetivo_focus = (
+                0.5
+                if self.highlight_sc is None
+                else (1.0 if scheduler == self.highlight_sc else 0.0)
+            )
+            if abs(objetivo_focus - self.focus_animado.get(scheduler, 0.5)) > 0.01:
+                return True
+        return any(
+            abs(maximo - animado) > 0.5
+            for maximo, animado in zip(
+                self.max_por_categoria, self.max_animados, strict=True
+            )
+        )
+
+    def _asegurar_tick(self):
+        if self._tick_source_id is None and not self._tick_suspended:
+            self._tick_source_id = GLib.timeout_add(_TICK_INTERVAL_MS, self.tick)
+
+    def _detener_tick(self):
+        source_id = self._tick_source_id
+        self._tick_source_id = None
+        if source_id is not None:
+            GLib.source_remove(source_id)
+
+    def _on_unrealize(self, *_args):
+        self._tick_suspended = True
+        self._detener_tick()
+
+    def _on_realize(self, *_args):
+        self._tick_suspended = False
+        self._sincronizar_formas()
+        if self._hay_animacion_pendiente():
+            self._asegurar_tick()
+
+    def _on_destroy(self, *_args):
+        self._tick_suspended = True
+        self.cleanup()
+
+    def cleanup(self):
+        """Detiene fuentes GLib y cualquier pulso ligado al widget."""
+        self._pulse_active = False
+        self._pulse_t = 0.0
+        self._detener_tick()
+
+    def reset(self, categorias=None, preservar_colores=True):
+        """Limpia todo el estado visual conservando colores estables por defecto."""
+        self._reset_estado(
+            categorias=categorias,
+            preservar_colores=preservar_colores,
+            preservar_pulso=False,
+        )
+
+    def _reset_estado(
+        self,
+        categorias=None,
+        preservar_colores=True,
+        preservar_pulso=False,
+    ):
+        pulso_activo = self._pulse_active if preservar_pulso else False
+        self._detener_tick()
+        if categorias is not None:
+            try:
+                self._categorias = [str(categoria) for categoria in categorias]
+            except TypeError as exc:
+                raise ValueError("categorias debe ser una secuencia") from exc
+        self._datos_raw = {}
+        self._valores_animados = {}
+        self.max_por_categoria = [0.0] * self.num_categorias
+        self.max_animados = [0.0] * self.num_categorias
+        self.ocultos.clear()
+        self.highlight_sc = None
+        self.focus_animado.clear()
+        self.anim_tick = 0
+        self._hover_x = 0.0
+        self._hover_y = 0.0
+        self._pulse_active = pulso_activo
+        self._pulse_t = 0.0
+        if not preservar_colores:
+            self.colores.clear()
+        self.queue_draw()
+        if pulso_activo:
+            self._asegurar_tick()
 
     def registrar_scheduler(self, name):
+        name = str(name)
         if name not in self.datos_raw:
             self.datos_raw[name] = [0.0] * self.num_categorias
             self.valores_animados[name] = [0.0] * self.num_categorias
             self.focus_animado[name] = 0.5
             low = name.lower()
             if low not in self.colores:
-                self.colores[low] = generar_color_hash(name)
+                self.colores[low] = _generar_color_hash(name)
+        self._sincronizar_formas()
+        self.queue_draw()
+        self._asegurar_tick()
 
     def actualizar_dato(self, sched, cat_idx, val_raw):
-        if sched in self.datos_raw:
-            self.datos_raw[sched][cat_idx] = val_raw
-            if val_raw > self.max_por_categoria[cat_idx]:
-                self.max_por_categoria[cat_idx] = val_raw
+        if isinstance(cat_idx, bool) or not isinstance(cat_idx, int):
+            return False
+        if not 0 <= cat_idx < self.num_categorias:
+            return False
+        valor = _numero_no_negativo(val_raw)
+        if valor is None:
+            return False
+        sched = str(sched)
+        if sched not in self.datos_raw:
+            self.registrar_scheduler(sched)
+        self.datos_raw[sched][cat_idx] = valor
+        self._recalcular_maximos()
+        self._asegurar_tick()
+        return True
 
     def tick(self):
-        if not self.datos_raw:
-            return True
+        if self._tick_suspended:
+            self._tick_source_id = None
+            return False
+
+        self._sincronizar_formas()
 
         cambio = False
 
@@ -117,10 +397,13 @@ class GraficoComparativo(Gtk.DrawingArea):
         if cambio:
             self.anim_tick += 1
             self.queue_draw()
-        return True
+            return True
+
+        self._tick_source_id = None
+        return False
 
     def _get_fg(self):
-        accent = obtener_color_tema("accent_color")
+        accent = _obtener_color_tema("accent_color")
         if Adw.StyleManager.get_default().get_dark():
             return accent or (1.0, 1.0, 1.0)
         else:
@@ -129,19 +412,24 @@ class GraficoComparativo(Gtk.DrawingArea):
     def iniciar_pulso(self):
         self._pulse_active = True
         self._pulse_t = 0.0
+        self._asegurar_tick()
 
     def detener_pulso(self):
         self._pulse_active = False
         self._pulse_t = 0.0
         self.queue_draw()
+        self._sincronizar_formas()
+        if self._hay_animacion_pendiente():
+            self._asegurar_tick()
         return 0.0, 0.0, 0.0
 
     def on_mouse_move(self, controller, x, y):
+        self._sincronizar_formas()
         self._hover_x = x
         self._hover_y = y
         cx, cy = self.get_width() / 2, self.get_height() / 2
         radio = min(cx, cy) - 50
-        if radio <= 0:
+        if radio <= 0 or self.num_categorias <= 0:
             return
 
         mejor_dist = 30.0
@@ -151,7 +439,7 @@ class GraficoComparativo(Gtk.DrawingArea):
                 continue
             for i in range(self.num_categorias):
                 ang = (2 * math.pi * i / self.num_categorias) - math.pi / 2
-                val = pts[i] / 100.0
+                val = _fraccion_radial(pts[i])
                 px = cx + math.cos(ang) * radio * val
                 py = cy + math.sin(ang) * radio * val
                 dist = math.hypot(x - px, y - py)
@@ -162,6 +450,7 @@ class GraficoComparativo(Gtk.DrawingArea):
         if nuevo != self.highlight_sc:
             self.highlight_sc = nuevo
             self.queue_draw()
+            self._asegurar_tick()
 
     def on_mouse_leave(self, controller):
         if self.highlight_sc:
@@ -169,6 +458,7 @@ class GraficoComparativo(Gtk.DrawingArea):
             self._hover_x = 0.0
             self._hover_y = 0.0
             self.queue_draw()
+            self._asegurar_tick()
 
     def _dibujar_tooltip(self, cr, w, h, tr, tg, tb, ta):
         sc = self.highlight_sc
@@ -212,12 +502,15 @@ class GraficoComparativo(Gtk.DrawingArea):
     def dibujar(self, area, cr, width, height, user_data=None):
         if not _HAS_CAIRO:
             return
+        self._sincronizar_formas()
         tr, tg, tb = self._get_fg()
         cx, cy = width / 2, height / 2
         radio = min(cx, cy) - 50
         if radio <= 0:
             return
         n = self.num_categorias
+        if n <= 0:
+            return
 
         for nivel in [25, 50, 75, 100]:
             cr.set_line_width(0.5)
@@ -282,7 +575,7 @@ class GraficoComparativo(Gtk.DrawingArea):
             puntos = []
             for i in range(n):
                 ang = (2 * math.pi * i / n) - math.pi / 2
-                val = max(0.02, min(0.98, pts[i] / 100.0))
+                val = _fraccion_radial(pts[i])
                 px = cx + math.cos(ang) * radio * val
                 py = cy + math.sin(ang) * radio * val
                 puntos.append((px, py))

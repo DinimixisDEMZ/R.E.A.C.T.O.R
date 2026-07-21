@@ -13,8 +13,6 @@ from gi.repository import GLib
 
 # ─── Regex Precompilados ───
 
-RE_RUNNING = re.compile(r"running\s+([\w\.-]+)(?:.*(?:in\s+|\[)([\w-]+)(?:\]|\s+mode)?)?", re.IGNORECASE)
-RE_JSON_ARRAY = re.compile(r'\[[\s\S]*\]')
 RE_ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
@@ -82,12 +80,6 @@ def generar_color_hash(name):
     sat = 0.65 + (h_val % 10) / 100.0
     lit = 0.50 + (h_val % 10) / 100.0
     return hsl_to_rgb(hue, sat, lit)
-
-def obtener_color_css(name):
-    """Devuelve un string CSS 'rgb(...)' basado en el nombre del scheduler."""
-    r, g, b = generar_color_hash(name)
-    return f"rgb({int(r*255)}, {int(g*255)}, {int(b*255)})"
-
 
 def _linear_to_srgb(v):
     """Convierte un valor de color de espacio lineal a sRGB."""

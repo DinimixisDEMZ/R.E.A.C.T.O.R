@@ -1,6 +1,6 @@
 """
 Widget de leyenda interactiva para la gráfica de detección.
-Chips clickeables que permiten ocultar/mostrar schedulers.
+Controles enfocables que permiten ocultar/mostrar schedulers.
 """
 
 import math
@@ -11,8 +11,62 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Gdk
 
 
+def calcular_estado_leyenda(nombre, ocultos, visible=None):
+    """Calcula el estado visual y la copia actualizada de ocultos.
+
+    La colección recibida nunca se modifica. Si ``visible`` no se proporciona,
+    se infiere a partir de ``nombre`` y ``ocultos``; al cambiarlo se devuelve la
+    transición completa que necesita el chip.
+    """
+    ocultos_nuevos = set(ocultos)
+    visible = nombre not in ocultos_nuevos if visible is None else bool(visible)
+
+    if visible:
+        ocultos_nuevos.discard(nombre)
+        opacidad = 1.0
+        opacidad_indicador = 1.0
+    else:
+        ocultos_nuevos.add(nombre)
+        opacidad = 0.4
+        opacidad_indicador = 0.3
+
+    return visible, opacidad, opacidad_indicador, ocultos_nuevos
+
+
+def _actualizar_nombre_accesible(widget, texto):
+    """Actualiza el nombre accesible con la API disponible de GTK4."""
+    setter = getattr(widget, "set_accessible_name", None)
+    if callable(setter):
+        setter(texto)
+        return
+
+    update_property = getattr(widget, "update_property", None)
+    accessible_property = getattr(Gtk, "AccessibleProperty", None)
+    label_property = getattr(accessible_property, "LABEL", None)
+    if not callable(update_property) or label_property is None:
+        return
+
+    try:
+        update_property([label_property], [texto])
+    except TypeError:
+        # Permite stubs y bindings que exponen la variante escalar.
+        update_property(label_property, texto)
+
+
+def _aplicar_estado(chip, indicador, nombre, estado):
+    visible, opacidad, opacidad_indicador, _ = estado
+    chip.set_active(visible)
+    chip.set_opacity(opacidad)
+    indicador.set_opacity(opacidad_indicador)
+
+    accion = "Ocultar" if visible else "Mostrar"
+    texto = f"{accion} scheduler {nombre}"
+    chip.set_tooltip_text(texto)
+    _actualizar_nombre_accesible(chip, texto)
+
+
 def crear_chip_leyenda(nombre, grafico, box_leyenda):
-    """Crea un chip de leyenda interactivo para un scheduler.
+    """Crea un control de leyenda accesible para un scheduler.
     
     Args:
         nombre: Nombre del scheduler
@@ -21,8 +75,10 @@ def crear_chip_leyenda(nombre, grafico, box_leyenda):
     """
     r, g, b = grafico.colores.get(nombre.lower(), (0.5, 0.5, 0.5))
 
-    chip = Gtk.Box(spacing=10, css_classes=["card", "pill"])
+    chip = Gtk.ToggleButton(css_classes=["card", "pill"])
     chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+
+    contenido = Gtk.Box(spacing=10)
 
     # Indicador de color
     dot = Gtk.DrawingArea()
@@ -46,23 +102,25 @@ def crear_chip_leyenda(nombre, grafico, box_leyenda):
     label.set_margin_bottom(4)
     label.add_css_class("caption-heading")
 
-    chip.append(dot)
-    chip.append(label)
+    contenido.append(dot)
+    contenido.append(label)
+    chip.set_child(contenido)
 
-    # Toggle de visibilidad al clickear
-    def al_clickear(gesture, n_press, x, y, name):
-        if name in grafico.ocultos:
-            grafico.ocultos.remove(name)
-            chip.set_opacity(1.0)
-            dot.set_opacity(1.0)
-        else:
-            grafico.ocultos.add(name)
-            chip.set_opacity(0.4)
-            dot.set_opacity(0.3)
+    estado = calcular_estado_leyenda(nombre, grafico.ocultos)
+    _aplicar_estado(chip, dot, nombre, estado)
+
+    def al_togglear(button, *_args):
+        estado = calcular_estado_leyenda(
+            nombre,
+            grafico.ocultos,
+            button.get_active(),
+        )
+        grafico.ocultos.clear()
+        grafico.ocultos.update(estado[3])
+        _aplicar_estado(button, dot, nombre, estado)
         grafico.queue_draw()
 
-    click = Gtk.GestureClick()
-    click.connect("pressed", al_clickear, nombre)
-    chip.add_controller(click)
+    chip.connect("toggled", al_togglear)
 
     box_leyenda.append(chip)
+    return chip
