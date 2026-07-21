@@ -3,6 +3,7 @@ Pestaña de Automatización: Detección inteligente del mejor scheduler.
 """
 
 import datetime
+import random
 import threading
 import time
 
@@ -17,6 +18,29 @@ from core.scoring import calcular_scores_finales, calcular_mejores, calcular_sco
 from core.database import guardar_run, guardar_resultados_batch, consultar_runs_auto, cargar_resultados_de_run
 from utils.helpers import log
 from widgets.legend import crear_chip_leyenda
+
+
+def _animar_sliders(win, d_pot, d_resp, d_flu, callback=None):
+    s_pot = win.slider_pot.get_value()
+    s_resp = win.slider_resp.get_value()
+    s_flu = win.slider_flu.get_value()
+    state = {"paso": 0, "total": 12}
+
+    def tick():
+        state["paso"] += 1
+        t = state["paso"] / state["total"]
+        t = t * (2 - t)
+        win.slider_pot.set_value(s_pot + (d_pot - s_pot) * t)
+        win.slider_resp.set_value(s_resp + (d_resp - s_resp) * t)
+        win.slider_flu.set_value(s_flu + (d_flu - s_flu) * t)
+
+        if state["paso"] >= state["total"]:
+            if callback:
+                callback()
+            return False
+        return True
+
+    GLib.timeout_add(16, tick)
 
 
 def _toggle_all_scheds(win, state):
@@ -50,7 +74,7 @@ def _refrescar_auto_schedulers(win):
     # Eliminar las que ya no están
     for nombre in existentes - set(nombres):
         row, _ = win._auto_sched_checks.pop(nombre)
-        win._auto_sched_listbox.remove(row)
+        win._auto_expander.remove(row)
 
     # Añadir las nuevas
     for nombre in nombres:
@@ -62,7 +86,7 @@ def _refrescar_auto_schedulers(win):
         check.set_active(True)
         check.connect("toggled", lambda c, n=nombre: _actualizar_subtitulo_scheds(win))
         win._auto_sched_checks[nombre] = (row, check)
-        win._auto_sched_listbox.append(row)
+        win._auto_expander.add_row(row)
 
     _actualizar_subtitulo_scheds(win)
 
@@ -101,14 +125,12 @@ def setup_automatizacion_ui(win):
     btn_select_all.connect("clicked", lambda b: _toggle_all_scheds(win, True))
     btn_select_none.connect("clicked", lambda b: _toggle_all_scheds(win, False))
 
-    caja_toggle_scheds = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, margin_start=12, margin_top=6, margin_bottom=6)
-    caja_toggle_scheds.append(Gtk.Label(label="Seleccionar:", css_classes=["dim-label"]))
-    caja_toggle_scheds.append(btn_select_all)
-    caja_toggle_scheds.append(btn_select_none)
-    win._auto_expander.add_row(caja_toggle_scheds)
-
-    win._auto_sched_listbox = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
-    win._auto_expander.add_row(win._auto_sched_listbox)
+    toggle_row = Adw.ActionRow(title="Seleccionar:")
+    caja_btn = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    caja_btn.append(btn_select_all)
+    caja_btn.append(btn_select_none)
+    toggle_row.add_suffix(caja_btn)
+    win._auto_expander.add_row(toggle_row)
 
     grupo_auto.add(win._auto_expander)
 
@@ -150,48 +172,169 @@ def setup_automatizacion_ui(win):
     win._indice_historial = -1
     win._ajustando_pesos = False
 
-    grupo_pesos = Adw.PreferencesGroup(title="Ajustar Pesos", description="Modifique la importancia de cada dimensión. Los resultados se recalculan al instante.")
+    # ── Ajustar Pesos: one group, header suffix = recalc + icons ──
+    grupo_pesos = Adw.PreferencesGroup(title="Ajustar Pesos")
+    win.revealer_recalc = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.CROSSFADE, reveal_child=False)
+    win.barra_recalc = Gtk.ProgressBar(width_request=80, height_request=6, hexpand=False, valign=Gtk.Align.CENTER)
+    win.barra_recalc.set_fraction(0.0)
+    win.revealer_recalc.set_child(win.barra_recalc)
 
-    win.revealer_pesos = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN)
-    caja_pesos = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6)
+    preset_btns_data = [
+        ("object-select-symbolic", "Balanceado", 45, 45, 10),
+        ("power-profile-performance-symbolic", "Potencia", 70, 20, 10),
+        ("preferences-system-time-symbolic", "Respuesta", 10, 70, 20),
+        ("weather-windy-symbolic", "Fluidez", 10, 20, 70),
+    ]
+    win._preset_btns = []
+    for icon_name, tooltip, p_pot, p_resp, p_flu in preset_btns_data:
+        btn = Gtk.ToggleButton(css_classes=["flat", "circular"])
+        btn.set_child(Gtk.Image(icon_name=icon_name, pixel_size=14))
+        btn.set_tooltip_text(tooltip)
+        btn.connect("toggled", lambda b, pp=p_pot, pr=p_resp, pf=p_flu: _aplicar_preset(win, pp, pr, pf, b))
+        win._preset_btns.append(btn)
+    win._info_clicks = 0
+    _chistes_peso = [
+        "Si ajustas los pesos y nada cambia, no es el scheduler... eres tú.",
+        "45/45/10 es como pedir pizza: todos dicen que quieren lo mismo, pero nadie está conforme.",
+        "Un scheduler justo no existe. Solo hay planificadores menos injustos.",
+        "Si pones todo en 33%, obtienes... un scheduler que no sabe qué priorizar.",
+        "La fluidez no es lo mismo que ir rápido. Es no quedarse sin gasolina a mitad de carrera.",
+        "Fun fact: Linus Torvalds no ajusta sliders. Usa un stick.",
+        "¿Más potencia? Tu Ryzen 7 ya está dando todo. Respira.",
+        "Los pesos son como las reglas de la primera noche... siempre hay un traitor.",
+        "Si el scheduler te pregunta por qué lo torturas, dile que es para su bien.",
+        "Dato curioso: el 99% de los ajustes de pesos son placebo. Pero el 1% restante... también.",
+        "Ajustar pesos es como arreglar un auto en marcha. Divertido hasta que algo explota.",
+        "Si te gusta el botón, dale otra vez. No tengo vida.",
+        "¿Otra vez? ¿Acaso esto es un benchmark de clicks?",
+        "Contador oficial: ya llevas {n} clics en una bombillita. Impresionante.",
+    ]
+    def _on_info_click(btn):
+        win._info_clicks += 1
+        idx = win._info_clicks - 1
+        if idx < 3:
+            msg = _chistes_peso[idx]
+        elif idx < len(_chistes_peso) - 1:
+            msg = random.choice(_chistes_peso[3:-1])
+        else:
+            msg = _chistes_peso[-1].format(n=win._info_clicks)
+        win.toast_overlay.add_toast(Adw.Toast.new(msg))
+    info_btn = Gtk.Button(icon_name="dialog-information-symbolic", css_classes=["flat", "circular"], tooltip_text="Modifique la importancia de cada dimensión. Los resultados se recalculan al instante.")
+    info_btn.connect("clicked", _on_info_click)
+    suffix_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    suffix_box.append(win.revealer_recalc)
+    for btn in win._preset_btns:
+        suffix_box.append(btn)
+    suffix_box.append(info_btn)
+    grupo_pesos.set_header_suffix(suffix_box)
 
-    def _crear_slider_peso(nombre, color_hex, default):
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, margin_start=6, margin_end=6)
-        lbl = Gtk.Label(label=nombre, width_chars=12, xalign=1)
-        lbl_val = Gtk.Label(label=f"{default:.0f}%", css_classes=["monospace", "accent"], width_chars=4, xalign=0)
+    def _crear_slider_peso(nombre, icono, color_hex, default):
+        row = Adw.PreferencesRow()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, margin_start=12, margin_end=12, margin_top=4, margin_bottom=4)
+        img = Gtk.Image(icon_name=icono, pixel_size=14, css_classes=["dim-label"])
         adj = Gtk.Adjustment(value=default, lower=0, upper=100, step_increment=1, page_increment=10)
         scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=adj, hexpand=True, draw_value=False)
-        scale.set_size_request(200, -1)
-        row.append(lbl)
-        row.append(scale)
-        row.append(lbl_val)
+        lbl_val = Gtk.Label(label=f"{default:.0f}%", css_classes=["dim-label"], width_chars=4, xalign=1)
+        box.append(img)
+        box.append(scale)
+        box.append(lbl_val)
+        row.set_child(box)
         return row, scale, lbl_val
 
-    win._row_pot, win.slider_pot, win._lbl_pot = _crear_slider_peso("Potencia", "#e66100", 45)
-    win._row_resp, win.slider_resp, win._lbl_resp = _crear_slider_peso("Respuesta", "#26a269", 45)
-    win._row_flu, win.slider_flu, win._lbl_flu = _crear_slider_peso("Fluidez", "#9a99fa", 10)
+    win._row_pot, win.slider_pot, win._lbl_pot = _crear_slider_peso("Potencia", "power-profile-performance-symbolic", "#e66100", 45)
+    win._row_resp, win.slider_resp, win._lbl_resp = _crear_slider_peso("Respuesta", "preferences-system-time-symbolic", "#26a269", 45)
+    win._row_flu, win.slider_flu, win._lbl_flu = _crear_slider_peso("Fluidez", "weather-windy-symbolic", "#9a99fa", 10)
 
-    caja_pesos.append(win._row_pot)
-    caja_pesos.append(win._row_resp)
-    caja_pesos.append(win._row_flu)
+    grupo_pesos.add(win._row_pot)
+    grupo_pesos.add(win._row_resp)
+    grupo_pesos.add(win._row_flu)
 
-    btn_reset_pesos = Gtk.Button(label="Restaurar 45/45/10", css_classes=["flat"], margin_top=6, halign=Gtk.Align.CENTER)
-    btn_reset_pesos.connect("clicked", lambda b: _restaurar_pesos(win))
+    win._preset_btns[0].set_active(True)
 
-    def _on_peso_changed(win, slider, lbl, nombre):
-        if win._ajustando_pesos:
-            return
-        lbl.set_label(f"{slider.get_value():.0f}%")
+    win._peso_timer = 0
+    win._recalc_timer = 0
+
+    def _actualizar_lbls(win):
+        win._lbl_pot.set_label(f"{win.slider_pot.get_value():.0f}%")
+        win._lbl_resp.set_label(f"{win.slider_resp.get_value():.0f}%")
+        win._lbl_flu.set_label(f"{win.slider_flu.get_value():.0f}%")
+
+    def _finalizar_ajuste_pesos(win):
+        win._peso_timer = 0
+
+        pot = win.slider_pot.get_value()
+        resp = win.slider_resp.get_value()
+        flu = win.slider_flu.get_value()
+        total = pot + resp + flu
+
+        if total == 0:
+            _aplicar_preset(win, 45, 45, 10, None)
+            return False
+
+        if total != 100:
+            factor = 100.0 / total
+            new_pot = round(pot * factor)
+            new_resp = round(resp * factor)
+            new_flu = round(flu * factor)
+
+            win._ajustando_pesos = True
+
+            def despues():
+                _actualizar_lbls(win)
+                win._ajustando_pesos = False
+                if hasattr(win, '_brutos_finales') and win._brutos_finales:
+                    _recalcular_ranking(win)
+
+            _animar_sliders(win, new_pot, new_resp, new_flu, callback=despues)
+            return False
+
+        _actualizar_lbls(win)
         if hasattr(win, '_brutos_finales') and win._brutos_finales:
             _recalcular_ranking(win)
 
-    win.slider_pot.connect("value-changed", lambda s: _on_peso_changed(win, s, win._lbl_pot, "Potencia"))
-    win.slider_resp.connect("value-changed", lambda s: _on_peso_changed(win, s, win._lbl_resp, "Respuesta"))
-    win.slider_flu.connect("value-changed", lambda s: _on_peso_changed(win, s, win._lbl_flu, "Fluidez"))
+        return False
 
-    caja_pesos.append(btn_reset_pesos)
-    win.revealer_pesos.set_child(caja_pesos)
-    grupo_pesos.add(win.revealer_pesos)
+    def _on_peso_changed(win, slider):
+        if win._ajustando_pesos:
+            return
+
+        pot = win.slider_pot.get_value()
+        resp = win.slider_resp.get_value()
+        flu = win.slider_flu.get_value()
+        total = pot + resp + flu
+
+        if total != 100 and total != 0:
+            if slider is win.slider_pot:
+                v1, v2 = resp, flu
+                s1, s2 = win.slider_resp, win.slider_flu
+            elif slider is win.slider_resp:
+                v1, v2 = pot, flu
+                s1, s2 = win.slider_pot, win.slider_flu
+            else:
+                v1, v2 = pot, resp
+                s1, s2 = win.slider_pot, win.slider_resp
+
+            remaining = 100 - slider.get_value()
+            if v1 + v2 == 0 or remaining <= 0:
+                n1 = n2 = round(remaining / 2) if remaining > 0 else 0
+            else:
+                n1 = round(remaining * v1 / (v1 + v2))
+                n2 = remaining - n1
+
+            win._ajustando_pesos = True
+            s1.set_value(n1)
+            s2.set_value(n2)
+            win._ajustando_pesos = False
+
+        _actualizar_lbls(win)
+
+        if win._peso_timer > 0:
+            GLib.source_remove(win._peso_timer)
+        win._peso_timer = GLib.timeout_add(200, _finalizar_ajuste_pesos, win)
+
+    win.slider_pot.connect("value-changed", lambda s: _on_peso_changed(win, s))
+    win.slider_resp.connect("value-changed", lambda s: _on_peso_changed(win, s))
+    win.slider_flu.connect("value-changed", lambda s: _on_peso_changed(win, s))
 
     pref_page.add(grupo_auto)
     pref_page.add(grupo_visual)
@@ -206,7 +349,6 @@ def setup_automatizacion_ui(win):
     lbl_info = Gtk.Label(label="Procure no tener nada abierto\npara no afectar el análisis.", margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
     popover.set_child(lbl_info)
     btn_info.set_popover(popover)
-    header.pack_start(btn_info)
 
     win.btn_nav_prev = Gtk.Button(icon_name="go-previous-symbolic", tooltip_text="Run anterior", sensitive=False)
     win.btn_nav_next = Gtk.Button(icon_name="go-next-symbolic", tooltip_text="Run siguiente", sensitive=False)
@@ -222,6 +364,7 @@ def setup_automatizacion_ui(win):
     btn_borrar = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Limpiar Análisis")
     btn_borrar.connect("clicked", lambda b: limpiar_ranking_auto(win, b))
     header.pack_end(btn_borrar)
+    header.pack_end(btn_info)
 
     _refrescar_historial(win)
     _refrescar_auto_schedulers(win)
@@ -458,7 +601,10 @@ def iniciar_auto_test(win, btn):
 def _poblar_ranking(win, pesos=None):
     """Puebla la lista de ranking en fila_ganador usando _brutos_finales con pesos opcionales."""
     if not hasattr(win, '_brutos_finales') or not win._brutos_finales:
+        _sincronizar_estado_pesos(win, False)
         return
+
+    _sincronizar_estado_pesos(win, True)
 
     for f in win._filas_ranking:
         win.fila_ganador.remove(f)
@@ -516,22 +662,64 @@ def _poblar_ranking(win, pesos=None):
         )
 
 
-def _restaurar_pesos(win):
-    """Restaura los sliders a 45/45/10."""
+def _aplicar_preset(win, p_pot, p_resp, p_flu, btn_activo=None):
+    """Anima los sliders a un preset y desactiva los demás botones."""
+    if btn_activo is not None:
+        parent = btn_activo.get_parent()
+        if parent is not None:
+            child = parent.get_first_child()
+            while child:
+                if child is not btn_activo and hasattr(child, 'set_active'):
+                    child.set_active(False)
+                child = child.get_next_sibling()
+
     win._ajustando_pesos = True
-    win.slider_pot.set_value(45)
-    win.slider_resp.set_value(45)
-    win.slider_flu.set_value(10)
-    win._lbl_pot.set_label("45%")
-    win._lbl_resp.set_label("45%")
-    win._lbl_flu.set_label("10%")
-    win._ajustando_pesos = False
-    if hasattr(win, '_brutos_finales') and win._brutos_finales:
-        _recalcular_ranking(win)
+
+    def despues():
+        win._lbl_pot.set_label(f"{win.slider_pot.get_value():.0f}%")
+        win._lbl_resp.set_label(f"{win.slider_resp.get_value():.0f}%")
+        win._lbl_flu.set_label(f"{win.slider_flu.get_value():.0f}%")
+        win._ajustando_pesos = False
+        if hasattr(win, '_brutos_finales') and win._brutos_finales:
+            _recalcular_ranking(win)
+
+    _animar_sliders(win, p_pot, p_resp, p_flu, callback=despues)
+
+
+def _sincronizar_estado_pesos(win, hay_datos):
+    """Muestra/oculta filas de sliders y bloquea/habilita según hay_datos."""
+    if not hasattr(win, '_row_pot'):
+        return
+    win._row_pot.set_visible(hay_datos)
+    win._row_resp.set_visible(hay_datos)
+    win._row_flu.set_visible(hay_datos)
+    win._row_pot.set_sensitive(hay_datos)
+    win._row_resp.set_sensitive(hay_datos)
+    win._row_flu.set_sensitive(hay_datos)
+
+
+def _mostrar_banner_recalc(win):
+    if not hasattr(win, 'revealer_recalc'):
+        return
+    win.revealer_recalc.set_reveal_child(True)
+    if win._recalc_timer:
+        GLib.source_remove(win._recalc_timer)
+    win._recalc_timer = GLib.timeout_add(50, lambda: win.barra_recalc.pulse() or True)
+
+    def ocultar():
+        if win._recalc_timer:
+            GLib.source_remove(win._recalc_timer)
+            win._recalc_timer = 0
+        win.barra_recalc.set_fraction(0.0)
+        win.revealer_recalc.set_reveal_child(False)
+        return False
+
+    GLib.timeout_add(600, ocultar)
 
 
 def _recalcular_ranking(win):
     """Lee los sliders y repuebla el ranking."""
+    _mostrar_banner_recalc(win)
     pot = win.slider_pot.get_value()
     resp = win.slider_resp.get_value()
     flu = win.slider_flu.get_value()
@@ -636,7 +824,6 @@ def _navegar_historial(win, direccion):
 
     # Mostrar ranking actualizado
     win.fila_ganador.set_expanded(True)
-    win.revealer_pesos.set_reveal_child(True)
     win.btn_auto.set_label("Determinar")
     win.btn_auto.set_sensitive(True)
     win.btn_auto.add_css_class("suggested-action")
@@ -662,7 +849,6 @@ def finalizar_auto_test_success(win):
     while (c := win.box_resultados.get_first_child()):
         win.box_resultados.remove(c)
 
-    win.revealer_pesos.set_reveal_child(True)
     _poblar_ranking(win)
 
     _refrescar_historial(win)
@@ -734,6 +920,5 @@ def limpiar_ranking_auto(win, btn):
     win._filas_ranking.clear()
 
     win.fila_ganador.set_expanded(False)
-    if hasattr(win, 'revealer_pesos'):
-        win.revealer_pesos.set_reveal_child(False)
+    _sincronizar_estado_pesos(win, False)
     win.grafico.queue_draw()
