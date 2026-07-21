@@ -85,7 +85,7 @@ def activar_db_temporal():
     global _db_temp
     if _db_temp is not None:
         return
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
     for stmt in _SCHEMA_SQL.split(";"):

@@ -21,6 +21,7 @@ except ImportError:
     _HAS_CAIRO = False
 
 from utils.helpers import obtener_color_tema
+from widgets.circular_meter import CircularMeter, _color_para_temperatura
 
 
 # ── Helpers de Formateo y Parsing ─────────────────────────────────────────────
@@ -236,6 +237,7 @@ class RadarChart(Gtk.DrawingArea):
         self.set_halign(Gtk.Align.CENTER)
         self._values: list[float] = []
         self._labels: list[str]   = []
+        self._axis_names: list[str] = []
         self._raw_values: list    = []
         self._progress  = 0.0
         self._pulse_t   = 0.0
@@ -300,20 +302,31 @@ class RadarChart(Gtk.DrawingArea):
                 "subtext": (0.45, 0.50, 0.55)
             }
 
-    def set_data(self, values: list[float], labels: list[str], raw_values: list = None):
-        valid = [(v, l) for v, l in zip(values, labels) if v > 0]
-        new_vals = [v for v, _ in valid]
-        new_labels = [l for _, l in valid]
-        new_raw = None
-        if raw_values:
-            new_raw = [r for r, (v, _) in zip(raw_values, valid) if v > 0]
+    def set_data(self, values: list[float], labels: list[str], raw_values: list = None, axis_names: list[str] = None):
+        if axis_names is None:
+            axis_names = [eje[0] for eje in _EJES]
+
+        paired = []
+        for i in range(len(values)):
+            v = values[i]
+            l = labels[i] if i < len(labels) else "?"
+            raw = raw_values[i] if (raw_values and i < len(raw_values)) else None
+            name = axis_names[i] if i < len(axis_names) else f"Eje {i+1}"
+            paired.append((v, l, raw, name))
+
+        valid = [p for p in paired if p[0] > 0]
+        new_vals = [p[0] for p in valid]
+        new_labels = [p[1] for p in valid]
+        new_raw = [p[2] for p in valid] if raw_values else []
+        new_names = [p[3] for p in valid]
 
         new_mode = "radar" if len(new_vals) >= 3 else "bars"
         axes_changed = (len(new_vals) != self._num_axes) or (new_mode != self._mode)
 
         self._values = new_vals
         self._labels = new_labels
-        self._raw_values = new_raw or []
+        self._raw_values = new_raw
+        self._axis_names = new_names
         self._num_axes = len(new_vals)
         self._mode = new_mode
 
@@ -446,7 +459,7 @@ class RadarChart(Gtk.DrawingArea):
                 cr.fill()
 
             # Label nombre (abajo)
-            label = self._labels[i] if i < len(self._labels) else "?"
+            label = self._axis_names[i] if i < len(self._axis_names) else "?"
             cr.select_font_face("Sans", 0, 0)
             cr.set_font_size(9.0)
             ext = cr.text_extents(label)
@@ -455,8 +468,7 @@ class RadarChart(Gtk.DrawingArea):
             cr.show_text(label)
 
             # Valor (arriba de la barra)
-            raw = self._raw_values[i] if i < len(self._raw_values) else 0
-            val_str = f"{raw:.0f}" if raw else ""
+            val_str = self._labels[i] if i < len(self._labels) else ""
             cr.set_font_size(9.0)
             ext_v = cr.text_extents(val_str)
             cr.set_source_rgba(*colors["text"], 0.8 * ta * prog)
@@ -583,8 +595,8 @@ class RadarChart(Gtk.DrawingArea):
             a = a0 + i * step
             lx = cx + (R + OFFSET) * math.cos(a)
             ly = cy + (R + OFFSET) * math.sin(a)
-            name = self._labels[i] if i < len(self._labels) else "?"
-            val = name
+            name = self._axis_names[i] if i < len(self._axis_names) else "?"
+            val = self._labels[i] if i < len(self._labels) else "?"
             is_hl = (i == hi)
 
             cr.select_font_face("Sans", 0, 0)
@@ -645,33 +657,21 @@ def actualizar_diagnostico_tiempo_real(win, widgets):
         d_idl = t_idl - win._prev_cpu_idle
         if d_tot > 0:
             cpu_usage = (d_tot - d_idl) / d_tot
-            widgets["cpu_progress"].set_fraction(cpu_usage)
-            widgets["cpu_val_lbl"].set_label(f"{cpu_usage * 100:.1f}%")
+            widgets["cpu_meter"].update(cpu_usage, f"{cpu_usage * 100:.1f}%")
     win._prev_cpu_total = t_tot
     win._prev_cpu_idle = t_idl
 
     # 2. Uso de Memoria
     m_tot, m_usd, m_frac = obtener_uso_memoria()
     if m_tot > 0:
-        widgets["mem_progress"].set_fraction(m_frac)
-        widgets["mem_val_lbl"].set_label(f"{m_usd:.1f} GB / {m_tot:.1f} GB ({m_frac * 100:.1f}%)")
+        widgets["mem_meter"].update(m_frac, f"{m_usd:.1f} GB")
 
     # 3. Temperatura
     t_temp = win.sensor.obtener_temp()
     if t_temp > 0:
-        lbl_temp = widgets["temp_val_lbl"]
-        lbl_temp.set_label(f"{t_temp:.1f} °C")
-        lbl_temp.remove_css_class("success-label")
-        lbl_temp.remove_css_class("warning-label")
-        lbl_temp.remove_css_class("error-label")
-        if t_temp < 60:
-            lbl_temp.add_css_class("success-label")
-        elif t_temp < 75:
-            lbl_temp.add_css_class("warning-label")
-        else:
-            lbl_temp.add_css_class("error-label")
+        widgets["temp_meter"].update(t_temp / 100.0, f"{t_temp:.1f} °C", color=_color_para_temperatura(t_temp))
     else:
-        widgets["temp_val_lbl"].set_label("N/D")
+        widgets["temp_meter"].update(0.0, "N/D")
 
     # 4. Planificador Activo
     sc_name, sc_mode = win.scx.obtener_estado()
@@ -776,7 +776,20 @@ def setup_diagnostico_ui(win):
     win._prev_ctxt = None
     win._prev_ctxt_time = None
 
-    # ── 1. Encabezado de la Página ──
+    # ── 1. Medidores en Tiempo Real (Grandes, al principio) ──
+    meters_group = Adw.PreferencesGroup()
+    cpu_meter = CircularMeter("cpu-symbolic", "CPU", size=90)
+    mem_meter = CircularMeter("drive-harddisk-symbolic", "RAM", size=90)
+    temp_meter = CircularMeter("temperature-symbolic", "Temp", size=90)
+
+    box_meters = Gtk.Box(spacing=24, halign=Gtk.Align.CENTER, margin_top=12, margin_bottom=12)
+    box_meters.append(cpu_meter)
+    box_meters.append(mem_meter)
+    box_meters.append(temp_meter)
+    meters_group.add(box_meters)
+    pref_page.add(meters_group)
+
+    # ── 2. Encabezado de la Página ──
     banner_group = Adw.PreferencesGroup()
     cpu_title_row = Adw.ActionRow()
     cpu_title_row.set_icon_name("cpu-symbolic")
@@ -784,30 +797,11 @@ def setup_diagnostico_ui(win):
     pref_page.add(banner_group)
     win.cpu_title_row = cpu_title_row  # Guardamos referencia para poblar el modelo de CPU
 
-    # ── 2. Monitoreo en Tiempo Real ──
+    # ── 3. Monitoreo en Tiempo Real ──
     rt_group = Adw.PreferencesGroup(
         title="Monitoreo en Tiempo Real",
         description="Estado, carga del sistema e integridad térmica."
     )
-    
-    cpu_row = Adw.ActionRow(title="Carga de CPU")
-    cpu_val_lbl = Gtk.Label(label="...", valign=Gtk.Align.CENTER)
-    cpu_progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER, hexpand=True, margin_end=12)
-    cpu_row.add_suffix(cpu_progress)
-    cpu_row.add_suffix(cpu_val_lbl)
-    rt_group.add(cpu_row)
-
-    mem_row = Adw.ActionRow(title="Uso de Memoria RAM")
-    mem_val_lbl = Gtk.Label(label="...", valign=Gtk.Align.CENTER)
-    mem_progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER, hexpand=True, margin_end=12)
-    mem_row.add_suffix(mem_progress)
-    mem_row.add_suffix(mem_val_lbl)
-    rt_group.add(mem_row)
-
-    temp_row = Adw.ActionRow(title="Temperatura de CPU")
-    temp_val_lbl = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
-    temp_row.add_suffix(temp_val_lbl)
-    rt_group.add(temp_row)
 
     sched_row = Adw.ActionRow(title="Planificador Activo")
     sched_val_lbl = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
@@ -907,11 +901,9 @@ def setup_diagnostico_ui(win):
 
     # ── Diccionario de Widgets para el Monitoreo en Vivo ──
     widgets = {
-        "cpu_progress": cpu_progress,
-        "cpu_val_lbl": cpu_val_lbl,
-        "mem_progress": mem_progress,
-        "mem_val_lbl": mem_val_lbl,
-        "temp_val_lbl": temp_val_lbl,
+        "cpu_meter": cpu_meter,
+        "mem_meter": mem_meter,
+        "temp_meter": temp_meter,
         "sched_val_lbl": sched_val_lbl,
         "core_bars": core_bars,
         "core_labels": core_labels,

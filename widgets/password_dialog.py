@@ -9,15 +9,14 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 
-class DialogoPassword(Adw.Window):
-    """Ventana modal para solicitar contraseña de administrador."""
+class DialogoPassword(Adw.Dialog):
+    """Diálogo modal para solicitar contraseña de administrador."""
 
     def __init__(self, parent_window, on_success):
         super().__init__()
-        self.set_transient_for(parent_window)
-        self.set_modal(True)
         self.set_title("Autenticación Requerida")
-        self.set_default_size(350, 200)
+        self.set_content_width(350)
+        self.set_content_height(200)
         self.on_success = on_success
 
         box = Gtk.Box(
@@ -45,11 +44,11 @@ class DialogoPassword(Adw.Window):
         self.btn.connect("clicked", self.validar)
         box.append(self.btn)
 
-        self.lbl_error = Gtk.Label(label="", css_classes=["error"])
-        self.lbl_error.set_visible(False)
-        box.append(self.lbl_error)
+        self.set_child(box)
+        self._parent_window = parent_window
 
-        self.set_content(box)
+    def present(self, parent=None):
+        super().present(parent or self._parent_window)
 
     def on_buffer_changed(self, *args):
         if self.entry.get_text():

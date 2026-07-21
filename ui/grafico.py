@@ -42,6 +42,7 @@ class GraficoComparativo(Gtk.DrawingArea):
         self.set_margin_start(16)
         self.set_margin_end(16)
         self.highlight_sc = None
+        self.highlight_cat = -1
         self.focus_animado = {}
         self.anim_tick = 0
         self._hover_x = 0.0
@@ -145,7 +146,8 @@ class GraficoComparativo(Gtk.DrawingArea):
             return
 
         mejor_dist = 30.0
-        nuevo = None
+        nuevo_sc = None
+        nuevo_cat = -1
         for s, pts in self.valores_animados.items():
             if s in self.ocultos:
                 continue
@@ -157,37 +159,68 @@ class GraficoComparativo(Gtk.DrawingArea):
                 dist = math.hypot(x - px, y - py)
                 if dist < mejor_dist:
                     mejor_dist = dist
-                    nuevo = s
+                    nuevo_sc = s
+                    nuevo_cat = i
 
-        if nuevo != self.highlight_sc:
-            self.highlight_sc = nuevo
+        if nuevo_sc != self.highlight_sc or nuevo_cat != self.highlight_cat:
+            self.highlight_sc = nuevo_sc
+            self.highlight_cat = nuevo_cat
             self.queue_draw()
 
     def on_mouse_leave(self, controller):
-        if self.highlight_sc:
+        if self.highlight_sc or self.highlight_cat != -1:
             self.highlight_sc = None
+            self.highlight_cat = -1
             self._hover_x = 0.0
             self._hover_y = 0.0
             self.queue_draw()
 
     def _dibujar_tooltip(self, cr, w, h, tr, tg, tb, ta):
         sc = self.highlight_sc
+        cat_idx = self.highlight_cat
         if not sc:
             return
         r, g, b = self.colores.get(sc.lower(), (0.6, 0.6, 0.6))
-        texto = f"  {sc}  "
-        cr.set_font_size(10)
-        ext = cr.text_extents(texto)
-        tw = ext.width + 16
-        th = ext.height + 10
+        
+        title_text = sc
+        cat_name = self.categorias[cat_idx].replace("\n", " ") if (0 <= cat_idx < len(self.categorias)) else "Métrica"
+        raw_val = self.datos_raw[sc][cat_idx] if (sc in self.datos_raw and 0 <= cat_idx < len(self.datos_raw[sc])) else 0
+        pct_val = self.valores_animados[sc][cat_idx] if (sc in self.valores_animados and 0 <= cat_idx < len(self.valores_animados[sc])) else 0
+
+        def format_raw_value(val):
+            if val is None:
+                return "0"
+            if val == 0:
+                return "0"
+            if val >= 1000000:
+                return f"{val/1000000:.2f}M"
+            if val >= 1000:
+                return f"{val:,.0f}".replace(",", ".")
+            if isinstance(val, float):
+                return f"{val:.1f}".rstrip("0").rstrip(".")
+            return str(val)
+
+        desc_text = f"{cat_name}: {format_raw_value(raw_val)} ({pct_val:.1f}%)"
+
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        cr.set_font_size(10.5)
+        ext_title = cr.text_extents(title_text)
+
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(9.5)
+        ext_desc = cr.text_extents(desc_text)
+
+        tw = max(ext_title.width, ext_desc.width) + 24
+        th = 36
         tx = self._hover_x + 14
-        ty = self._hover_y - th - 6
+        ty = self._hover_y - th - 10
         if tx + tw > w - 5:
             tx = self._hover_x - tw - 14
         if ty < 5:
             ty = self._hover_y + 14
-        rr = 5
-        cr.set_source_rgba(0, 0, 0, 0.78 * ta)
+
+        rr = 6
+        cr.set_source_rgba(0.08, 0.09, 0.11, 0.92 * ta)
         cr.new_sub_path()
         cr.arc(tx + tw - rr, ty + rr, rr, -math.pi/2, 0)
         cr.arc(tx + tw - rr, ty + th - rr, rr, 0, math.pi/2)
@@ -195,19 +228,28 @@ class GraficoComparativo(Gtk.DrawingArea):
         cr.arc(tx + rr, ty + rr, rr, math.pi, 3*math.pi/2)
         cr.close_path()
         cr.fill()
-        cr.set_source_rgba(r, g, b, 0.3 * ta)
+
+        cr.set_source_rgba(r, g, b, 0.5 * ta)
+        cr.set_line_width(1.2)
         cr.new_sub_path()
         cr.arc(tx + tw - rr, ty + rr, rr, -math.pi/2, 0)
         cr.arc(tx + tw - rr, ty + th - rr, rr, 0, math.pi/2)
         cr.arc(tx + rr, ty + th - rr, rr, math.pi/2, math.pi)
         cr.arc(tx + rr, ty + rr, rr, math.pi, 3*math.pi/2)
         cr.close_path()
-        cr.fill()
-        text_x = tx + (tw - ext.width) / 2 - ext.x_bearing
-        text_y = ty + (th - ext.height) / 2 - ext.y_bearing
-        cr.set_source_rgba(1, 1, 1, 0.95 * ta)
-        cr.move_to(text_x, text_y)
-        cr.show_text(texto)
+        cr.stroke()
+
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        cr.set_font_size(10.5)
+        cr.set_source_rgba(r, g, b, 1.0 * ta)
+        cr.move_to(tx + 12, ty + 14)
+        cr.show_text(title_text)
+
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(9.5)
+        cr.set_source_rgba(0.9, 0.9, 0.9, 0.95 * ta)
+        cr.move_to(tx + 12, ty + 26)
+        cr.show_text(desc_text)
 
     def dibujar(self, area, cr, width, height, user_data=None):
         if not _HAS_CAIRO:
@@ -246,17 +288,33 @@ class GraficoComparativo(Gtk.DrawingArea):
             cr.line_to(px, py)
             cr.stroke()
 
-            lbl = self.categorias[i].upper()
-            ext = cr.text_extents(lbl)
+            lineas = self.categorias[i].upper().split("\n")
+            line_h = cr.text_extents("Ay").height + 2
+            exts = [cr.text_extents(l) for l in lineas]
+            max_w = max(e.width for e in exts)
             lbl_r = radio + 25
-            lx = cx + math.cos(ang) * lbl_r - ext.width / 2
-            ly = cy + math.sin(ang) * lbl_r + ext.height / 2
+            total_h = line_h * len(lineas)
+            base_x = cx + math.cos(ang) * lbl_r - max_w / 2
+            base_y = cy + math.sin(ang) * lbl_r - total_h / 2
             cr.set_source_rgba(tr, tg, tb, 0.6)
-            cr.move_to(lx, ly)
-            cr.show_text(lbl)
+            for li, linea in enumerate(lineas):
+                cr.move_to(base_x + (max_w - exts[li].width) / 2, base_y + li * line_h + line_h)
+                cr.show_text(linea)
 
             val_max = self.max_animados[i] if i < len(self.max_animados) else 0
-            val_str = f"{val_max:,.0f}"
+            def format_raw_value(val):
+                if val is None:
+                    return "0"
+                if val == 0:
+                    return "0"
+                if val >= 1000000:
+                    return f"{val/1000000:.2f}M"
+                if val >= 1000:
+                    return f"{val:,.0f}".replace(",", ".")
+                if isinstance(val, float):
+                    return f"{val:.1f}".rstrip("0").rstrip(".")
+                return str(val)
+            val_str = format_raw_value(val_max)
             ext_v = cr.text_extents(val_str)
             vx = cx + math.cos(ang) * (lbl_r + 18) - ext_v.width / 2
             vy = cy + math.sin(ang) * (lbl_r + 18) + ext_v.height / 2
