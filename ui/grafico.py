@@ -539,14 +539,18 @@ class GraficoComparativo(Gtk.DrawingArea):
             cr.line_to(px, py)
             cr.stroke()
 
-            lbl = self.categorias[i].upper()
-            ext = cr.text_extents(lbl)
+            lineas = self.categorias[i].upper().split("\n")
+            line_h = cr.text_extents("Ay").height + 2
+            exts = [cr.text_extents(l) for l in lineas]
+            max_w = max(e.width for e in exts)
             lbl_r = radio + 25
-            lx = cx + math.cos(ang) * lbl_r - ext.width / 2
-            ly = cy + math.sin(ang) * lbl_r + ext.height / 2
+            total_h = line_h * len(lineas)
+            base_x = cx + math.cos(ang) * lbl_r - max_w / 2
+            base_y = cy + math.sin(ang) * lbl_r - total_h / 2
             cr.set_source_rgba(tr, tg, tb, 0.6)
-            cr.move_to(lx, ly)
-            cr.show_text(lbl)
+            for li, linea in enumerate(lineas):
+                cr.move_to(base_x + (max_w - exts[li].width) / 2, base_y + li * line_h + line_h)
+                cr.show_text(linea)
 
             val_max = self.max_animados[i] if i < len(self.max_animados) else 0
             val_str = f"{val_max:,.0f}"

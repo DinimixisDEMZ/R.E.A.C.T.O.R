@@ -14,10 +14,22 @@ Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización 
 ## Current State
 
 ### Recently completed
-- **Checkbox scheduler selection** for auto-detection — `_refrescar_auto_schedulers(win)` populates checkable `Adw.ActionRow` list in `grupo_auto`, below the "Determinar" button
-- **Sliders now independent** — no more auto-normalization on value-changed; normalization only in `_poblar_ranking` at calculation time
-- **`_restaurar_pesos` uses `_ajustando_pesos` flag** to suppress value-changed signals during bulk slider reset
-- **Div-by-zero protection** in `_poblar_ranking` when all sliders at 0
+- **Sliders redesigned** — vertical layout with name + percentage header (heading/accent) above, slider with draw_value=True below
+- **Real-time redistribution** — dragging one slider proportionally adjusts the other two to keep total=100 instantly, no debounce delay
+- **Preset buttons** — "Balanceado" (45/45/10), "Potencia" (70/20/10), "Respuesta" (10/70/20), "Fluidez" (10/20/70) as icon ToggleButtons, replacing old reset button
+- **`_aplicar_preset`** — animates sliders to any preset, deactivates sibling buttons, triggers ranking recalc
+- **Adw.Banner** — "Recalculando…" uses native Adw.Banner instead of Gtk.Revealer
+- **`.fine-tune` removed** — no more thickness change on touch
+- **Tighter spacing** — zero margins/spacing between slider rows, native Adw.PreferencesGroup handles layout
+- **Header icon presets** — moved preset buttons from below listbox to header as circular icon buttons: `object-select-symbolic` (Balanceado), `power-profile-performance-symbolic` (Potencia), `preferences-system-time-symbolic` (Respuesta), `weather-windy-symbolic` (Fluidez); info button with tooltip
+- **Header outside group** — `Adw.ActionRow(title="Ajustar Pesos", activatable=False)` added directly to `pref_page` (not inside `Adw.PreferencesGroup`), with buttons as `add_suffix()`; avoids row borders
+- **No more `Gtk.ListBox` for sliders** — sliders sit in a plain `Gtk.Box` inside `win.revealer_lista`; no separators or boxed-list borders
+- **Removed `fila_espera` placeholder** — listbox replaced by revealer that toggles visibility
+- **Recalc bar below sliders** — wrapped in `win.revealer_recalc` (SLIDE_DOWN) for slide-in/out animation; 50px bar right-aligned
+- **Name labels removed from slider rows** — icons alone identify Potencia / Respuesta / Fluidez
+- **`_lbl_pot/_resp/_flu` cleaned up** — no more dead `Gtk.Label` references or `set_label` calls
+- **Checkbox scheduler selection** for auto-detection — `_refrescar_auto_schedulers(win)` populates checkable `Adw.ActionRow` list in `grupo_auto`
+- **DB threading fix** — `activar_db_temporal()` uses `check_same_thread=False`
 - **Dev mode toggle** resets `compatibles=None`, clears nav badge, rebuilds disponibilidad + auto scheduler lists
 - **Time-travel navigation** (prev/next buttons) in auto-detection header
 - **p95 fix** for `memory` benchmark type (nanosecs-per-mutex extraction)
@@ -31,8 +43,8 @@ Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización 
 - No manual reorder of schedulers in the checklist
 
 ### Key Files
-- `/home/dinimixis/Documentos/Proyectos/Reactor/core/scoring.py` — `calcular_scores_finales()` accepts `pesos` param
-- `/home/dinimixis/Documentos/Proyectos/Reactor/core/benchmark.py` — p95 reads `nanosecs-per-mutex` for memory type
-- `/home/dinimixis/Documentos/Proyectos/Reactor/ui/automatizacion.py` — scheduler checklist, weight sliders, history nav
-- `/home/dinimixis/Documentos/Proyectos/Reactor/ui/disponibilidad.py` — `recargar_disponibilidad_ui` non-destructive refresh
-- `/home/dinimixis/Documentos/Proyectos/Reactor/core/database.py` — `consultar_runs_auto()` and `cargar_resultados_de_run()`
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/scoring.py` — `calcular_scores_finales()` accepts `pesos` param
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/benchmark.py` — p95 reads `nanosecs-per-mutex` for memory type
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/ui/automatizacion.py` — scheduler checklist, weight sliders with presets, history nav
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/ui/disponibilidad.py` — `recargar_disponibilidad_ui` non-destructive refresh
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/database.py` — `consultar_runs_auto()` and `cargar_resultados_de_run()`

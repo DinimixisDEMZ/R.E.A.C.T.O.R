@@ -597,7 +597,7 @@ def _refrescar_auto_schedulers(win, nombres=None):
     # Eliminar las que ya no están
     for nombre in existentes - set(nombres):
         row, _ = win._auto_sched_checks.pop(nombre)
-        win._auto_sched_listbox.remove(row)
+        win._auto_expander.remove(row)
 
     # Añadir las nuevas
     for nombre in nombres:
@@ -609,7 +609,7 @@ def _refrescar_auto_schedulers(win, nombres=None):
         check.set_active(True)
         check.connect("toggled", lambda _check: _actualizar_subtitulo_scheds(win))
         win._auto_sched_checks[nombre] = (row, check)
-        win._auto_sched_listbox.append(row)
+        win._auto_expander.add_row(row)
 
     _actualizar_subtitulo_scheds(win)
     scores = getattr(win, "_scores_finales", None) or {}
@@ -651,14 +651,12 @@ def setup_automatizacion_ui(win):
     btn_select_all.connect("clicked", lambda b: _toggle_all_scheds(win, True))
     btn_select_none.connect("clicked", lambda b: _toggle_all_scheds(win, False))
 
-    caja_toggle_scheds = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, margin_start=12, margin_top=6, margin_bottom=6)
-    caja_toggle_scheds.append(Gtk.Label(label="Seleccionar:", css_classes=["dim-label"]))
-    caja_toggle_scheds.append(btn_select_all)
-    caja_toggle_scheds.append(btn_select_none)
-    win._auto_expander.add_row(caja_toggle_scheds)
-
-    win._auto_sched_listbox = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
-    win._auto_expander.add_row(win._auto_sched_listbox)
+    toggle_row = Adw.ActionRow(title="Seleccionar:")
+    caja_btn = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    caja_btn.append(btn_select_all)
+    caja_btn.append(btn_select_none)
+    toggle_row.add_suffix(caja_btn)
+    win._auto_expander.add_row(toggle_row)
 
     grupo_auto.add(win._auto_expander)
 
@@ -734,22 +732,22 @@ def setup_automatizacion_ui(win):
         lbl_val = Gtk.Label(label=f"{default:.0f}%", css_classes=["monospace", "accent"], width_chars=4, xalign=0)
         adj = Gtk.Adjustment(value=default, lower=0, upper=100, step_increment=1, page_increment=10)
         scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=adj, hexpand=True, draw_value=False)
-        scale.set_size_request(200, -1)
-        row.append(lbl)
-        row.append(scale)
-        row.append(lbl_val)
+        lbl_val = Gtk.Label(label=f"{default:.0f}%", css_classes=["dim-label"], width_chars=4, xalign=1)
+        box.append(img)
+        box.append(scale)
+        box.append(lbl_val)
+        row.set_child(box)
         return row, scale, lbl_val
 
     win._row_pot, win.slider_pot, win._lbl_pot = _crear_slider_peso("Potencia", 45)
     win._row_resp, win.slider_resp, win._lbl_resp = _crear_slider_peso("Respuesta", 45)
     win._row_flu, win.slider_flu, win._lbl_flu = _crear_slider_peso("Fluidez", 10)
 
-    caja_pesos.append(win._row_pot)
-    caja_pesos.append(win._row_resp)
-    caja_pesos.append(win._row_flu)
+    grupo_pesos.add(win._row_pot)
+    grupo_pesos.add(win._row_resp)
+    grupo_pesos.add(win._row_flu)
 
-    btn_reset_pesos = Gtk.Button(label="Restaurar 45/45/10", css_classes=["flat"], margin_top=6, halign=Gtk.Align.CENTER)
-    btn_reset_pesos.connect("clicked", lambda b: _restaurar_pesos(win))
+    win._preset_btns[0].set_active(True)
 
     def _on_peso_changed(win, slider, lbl):
         if win._ajustando_pesos:
@@ -762,9 +760,47 @@ def setup_automatizacion_ui(win):
     win.slider_resp.connect("value-changed", lambda s: _on_peso_changed(win, s, win._lbl_resp))
     win.slider_flu.connect("value-changed", lambda s: _on_peso_changed(win, s, win._lbl_flu))
 
-    caja_pesos.append(btn_reset_pesos)
-    win.revealer_pesos.set_child(caja_pesos)
-    grupo_pesos.add(win.revealer_pesos)
+    def _on_peso_changed(win, slider):
+        if win._ajustando_pesos:
+            return
+
+        pot = win.slider_pot.get_value()
+        resp = win.slider_resp.get_value()
+        flu = win.slider_flu.get_value()
+        total = pot + resp + flu
+
+        if total != 100 and total != 0:
+            if slider is win.slider_pot:
+                v1, v2 = resp, flu
+                s1, s2 = win.slider_resp, win.slider_flu
+            elif slider is win.slider_resp:
+                v1, v2 = pot, flu
+                s1, s2 = win.slider_pot, win.slider_flu
+            else:
+                v1, v2 = pot, resp
+                s1, s2 = win.slider_pot, win.slider_resp
+
+            remaining = 100 - slider.get_value()
+            if v1 + v2 == 0 or remaining <= 0:
+                n1 = n2 = round(remaining / 2) if remaining > 0 else 0
+            else:
+                n1 = round(remaining * v1 / (v1 + v2))
+                n2 = remaining - n1
+
+            win._ajustando_pesos = True
+            s1.set_value(n1)
+            s2.set_value(n2)
+            win._ajustando_pesos = False
+
+        _actualizar_lbls(win)
+
+        if win._peso_timer > 0:
+            GLib.source_remove(win._peso_timer)
+        win._peso_timer = GLib.timeout_add(200, _finalizar_ajuste_pesos, win)
+
+    win.slider_pot.connect("value-changed", lambda s: _on_peso_changed(win, s))
+    win.slider_resp.connect("value-changed", lambda s: _on_peso_changed(win, s))
+    win.slider_flu.connect("value-changed", lambda s: _on_peso_changed(win, s))
 
     pref_page.add(grupo_auto)
     pref_page.add(grupo_visual)
@@ -779,7 +815,6 @@ def setup_automatizacion_ui(win):
     lbl_info = Gtk.Label(label="Procure no tener nada abierto\npara no afectar el análisis.", margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
     popover.set_child(lbl_info)
     btn_info.set_popover(popover)
-    header.pack_start(btn_info)
 
     win.btn_nav_prev = Gtk.Button(icon_name="go-previous-symbolic", tooltip_text="Run anterior", sensitive=False)
     win.btn_nav_next = Gtk.Button(icon_name="go-next-symbolic", tooltip_text="Run siguiente", sensitive=False)
@@ -795,6 +830,7 @@ def setup_automatizacion_ui(win):
     btn_borrar = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Limpiar Análisis")
     btn_borrar.connect("clicked", lambda _button: limpiar_ranking_auto(win))
     header.pack_end(btn_borrar)
+    header.pack_end(btn_info)
 
     _refrescar_historial(win)
     _cargar_ultimo_run(win)
@@ -1687,18 +1723,59 @@ def _poblar_ranking(win, pesos=None):
     return scores
 
 
-def _restaurar_pesos(win):
-    """Restaura los sliders a 45/45/10."""
+def _aplicar_preset(win, p_pot, p_resp, p_flu, btn_activo=None):
+    """Anima los sliders a un preset y desactiva los demás botones."""
+    if btn_activo is not None:
+        parent = btn_activo.get_parent()
+        if parent is not None:
+            child = parent.get_first_child()
+            while child:
+                if child is not btn_activo and hasattr(child, 'set_active'):
+                    child.set_active(False)
+                child = child.get_next_sibling()
+
     win._ajustando_pesos = True
-    win.slider_pot.set_value(45)
-    win.slider_resp.set_value(45)
-    win.slider_flu.set_value(10)
-    win._lbl_pot.set_label("45%")
-    win._lbl_resp.set_label("45%")
-    win._lbl_flu.set_label("10%")
-    win._ajustando_pesos = False
-    if hasattr(win, '_brutos_finales') and win._brutos_finales:
-        _recalcular_ranking(win)
+
+    def despues():
+        win._lbl_pot.set_label(f"{win.slider_pot.get_value():.0f}%")
+        win._lbl_resp.set_label(f"{win.slider_resp.get_value():.0f}%")
+        win._lbl_flu.set_label(f"{win.slider_flu.get_value():.0f}%")
+        win._ajustando_pesos = False
+        if hasattr(win, '_brutos_finales') and win._brutos_finales:
+            _recalcular_ranking(win)
+
+    _animar_sliders(win, p_pot, p_resp, p_flu, callback=despues)
+
+
+def _sincronizar_estado_pesos(win, hay_datos):
+    """Muestra/oculta filas de sliders y bloquea/habilita según hay_datos."""
+    if not hasattr(win, '_row_pot'):
+        return
+    win._row_pot.set_visible(hay_datos)
+    win._row_resp.set_visible(hay_datos)
+    win._row_flu.set_visible(hay_datos)
+    win._row_pot.set_sensitive(hay_datos)
+    win._row_resp.set_sensitive(hay_datos)
+    win._row_flu.set_sensitive(hay_datos)
+
+
+def _mostrar_banner_recalc(win):
+    if not hasattr(win, 'revealer_recalc'):
+        return
+    win.revealer_recalc.set_reveal_child(True)
+    if win._recalc_timer:
+        GLib.source_remove(win._recalc_timer)
+    win._recalc_timer = GLib.timeout_add(50, lambda: win.barra_recalc.pulse() or True)
+
+    def ocultar():
+        if win._recalc_timer:
+            GLib.source_remove(win._recalc_timer)
+            win._recalc_timer = 0
+        win.barra_recalc.set_fraction(0.0)
+        win.revealer_recalc.set_reveal_child(False)
+        return False
+
+    GLib.timeout_add(600, ocultar)
 
 
 def _recalcular_ranking(win):
@@ -2099,7 +2176,6 @@ def _cargar_run_historico(win, indice, *, mostrar_toast=True):
 
     _poblar_grafico_desde_brutos(win, brutos)
     win.fila_ganador.set_expanded(True)
-    win.revealer_pesos.set_reveal_child(True)
     win.btn_auto.set_label("Determinar")
     win.btn_auto.set_sensitive(True)
     win.btn_auto.add_css_class("suggested-action")
