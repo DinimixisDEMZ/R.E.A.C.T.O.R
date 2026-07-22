@@ -229,14 +229,12 @@ class VentanaSimple(Adw.ApplicationWindow):
             developer_name="Equipo de Desarrollo R.E.A.C.T.O.R",
             developers=[
                 "DinimixisDEMZ (Lead Developer/Lead Designer)",
-                "opencode (AI Software Engineer - big-pickle)",
-                "Antigravity (AI Assistant)",
                 "Dark Anubis (IT Technical Specialist, System Administrator, DevOps & Network Tech.)",
                 "MD1000[Emedé] (Beta Tester/Designer)",
                 "SunnyDeus (Beta Tester)",
                 "JMX369 (Beta Tester)",
                 "Ezku (Beta Tester)",
-                "Gekko (Designer)"
+                "Gekko (Designer)",
             ],
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='application-x-firmware',
@@ -277,6 +275,11 @@ class VentanaSimple(Adw.ApplicationWindow):
 Para más información sobre el modelo Faircode:
 <a href="https://faircode.io">https://faircode.io</a>""",
         )
+        dialogo.add_acknowledgement_section("Agentes de IA", [
+            "opencode (AI Software Engineer - big-pickle)",
+            "Antigravity (AI Assistant)",
+            "DeepSeek V4 Flash (AI Software Engineer)",
+        ])
         dialogo.present(self)
 
     def sincronizar_sistema(self):
@@ -286,34 +289,26 @@ Para más información sobre el modelo Faircode:
             lista_nombres = self.scx.obtener_lista(self.compatibles)
             self.modelo_schedulers.splice(0, self.modelo_schedulers.get_n_items(), lista_nombres)
 
-            rg = self.scx.scx_run(["scxctl", "get"])
-            status_text = rg.stdout.strip()
-            self.boton_estado.set_label(status_text or "Inactivo")
-
+            sc_name, sc_mode = self.scx.obtener_estado()
             self.boton_estado.remove_css_class("success")
             self.boton_estado.remove_css_class("destructive-action")
-
-            if status_text.lower().startswith("running"):
+            if sc_name:
+                self.boton_estado.set_label(f"{sc_name} [{sc_mode}]")
                 self.boton_estado.add_css_class("success")
-            else:
-                self.boton_estado.add_css_class("destructive-action")
-
-            match = RE_RUNNING.search(status_text)
-            if match:
-                self.active_sc = match.group(1)
-                sc_act = self.active_sc
-                modo_act = match.group(2) or "auto"
-
+                self.active_sc = sc_name
                 for i, nombre in enumerate(lista_nombres):
-                    if nombre.lower() == sc_act.lower():
+                    if nombre.lower() == sc_name.lower():
                         self.combo_schedulers.set_selected(i)
                         break
-
                 model_modos = self.combo_modos.get_model()
                 for i in range(model_modos.get_n_items()):
-                    if model_modos.get_string(i).lower() == modo_act.lower():
+                    if model_modos.get_string(i).lower() == sc_mode.lower():
                         self.combo_modos.set_selected(i)
                         break
+            else:
+                self.boton_estado.set_label("Sistema Base (Default)")
+                self.boton_estado.add_css_class("destructive-action")
+                self.active_sc = None
             self.en_sincronizacion = False
             actualizar_interfaz_ranking(self)
         except FileNotFoundError:
@@ -336,9 +331,8 @@ Para más información sobre el modelo Faircode:
             def al_validar(pwd):
                 if self.scx.validar_sudo(pwd):
                     callback()
-                else:
-                    self.toast_overlay.add_toast(Adw.Toast.new("Error: Contraseña incorrecta o fallo en sudo"))
-                del pwd
+                    return True
+                return False
 
             dialog = DialogoPassword(self, al_validar)
             dialog.present()

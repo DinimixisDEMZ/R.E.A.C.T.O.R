@@ -232,9 +232,10 @@ class RadarChart(Gtk.DrawingArea):
 
     def __init__(self):
         super().__init__()
-        self.set_size_request(self.SIZE, self.SIZE)
+        self.set_content_height(320)
         self.set_hexpand(True)
-        self.set_halign(Gtk.Align.CENTER)
+        self.set_margin_top(8)
+        self.set_margin_bottom(8)
         self._values: list[float] = []
         self._labels: list[str]   = []
         self._axis_names: list[str] = []
@@ -371,21 +372,6 @@ class RadarChart(Gtk.DrawingArea):
         ta = self._trans_alpha
 
         cr.set_antialias(1)
-
-        # ── Fondo Redondeado de la Tarjeta ───────────────────────────────────
-        rr, bx, by = 16, 4, 4
-        bw, bh = w - 8, h - 8
-        cr.new_sub_path()
-        cr.arc(bx + bw - rr, by + rr,      rr, -math.pi/2, 0)
-        cr.arc(bx + bw - rr, by + bh - rr, rr,  0,          math.pi/2)
-        cr.arc(bx + rr,      by + bh - rr, rr,  math.pi/2,  math.pi)
-        cr.arc(bx + rr,      by + rr,      rr,  math.pi,    3*math.pi/2)
-        cr.close_path()
-        cr.set_source_rgba(*colors["bg"], 0.75 * ta)
-        cr.fill_preserve()
-        cr.set_source_rgba(*colors["grid"], 0.25 * ta)
-        cr.set_line_width(1)
-        cr.stroke()
 
         if n == 0:
             cr.set_source_rgba(*colors["subtext"], 0.5 * ta)
@@ -675,10 +661,15 @@ def actualizar_diagnostico_tiempo_real(win, widgets):
 
     # 4. Planificador Activo
     sc_name, sc_mode = win.scx.obtener_estado()
+    sched_btn = widgets["sched_val_lbl"]
+    sched_btn.remove_css_class("success")
+    sched_btn.remove_css_class("destructive-action")
     if sc_name:
-        widgets["sched_val_lbl"].set_label(f"{sc_name} [{sc_mode}]")
+        sched_btn.set_label(f"{sc_name} [{sc_mode}]")
+        sched_btn.add_css_class("success")
     else:
-        widgets["sched_val_lbl"].set_label("Sistema Base (Default)")
+        sched_btn.set_label("Sistema Base (Default)")
+        sched_btn.add_css_class("destructive-action")
 
     # 5. Carga de Cores Individuales
     cores_stats = obtener_uso_cores()
@@ -804,7 +795,7 @@ def setup_diagnostico_ui(win):
     )
 
     sched_row = Adw.ActionRow(title="Planificador Activo")
-    sched_val_lbl = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
+    sched_val_lbl = Gtk.Button(label="Cargando...", valign=Gtk.Align.CENTER, css_classes=["flat"])
     sched_row.add_suffix(sched_val_lbl)
     rt_group.add(sched_row)
 
@@ -923,7 +914,9 @@ def setup_diagnostico_ui(win):
 
     if _HAS_CAIRO:
         radar = RadarChart()
-        radar_group.add(radar)
+        frame_radar = Gtk.Frame(css_classes=["card"])
+        frame_radar.set_child(radar)
+        radar_group.add(frame_radar)
     else:
         radar = None
         radar_group.add(Gtk.Label(
