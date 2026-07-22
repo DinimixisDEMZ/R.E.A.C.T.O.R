@@ -52,6 +52,12 @@ CREATE INDEX IF NOT EXISTS idx_results_test_type ON results(test_type);
 CREATE INDEX IF NOT EXISTS idx_results_run_id ON results(run_id);
 CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_compat_kernel ON compatibility(kernel_version);
+
+CREATE TABLE IF NOT EXISTS scheduler_info (
+    scheduler_name TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT 'https://github.com/sched-ext/scx'
+);
 """
 
 
@@ -116,6 +122,7 @@ def inicializar_db():
     conn = _get_conn()
     try:
         conn.executescript(_SCHEMA_SQL)
+        sembrar_info_schedulers()
     finally:
         _close_conn(conn)
 
@@ -287,10 +294,12 @@ def guardar_compatibilidad(nombre, kernel, compatible, mensaje):
     conn = _get_conn()
     try:
         conn.execute(
+            "DELETE FROM compatibility WHERE scheduler_name=? AND kernel_version=?",
+            (nombre, kernel)
+        )
+        conn.execute(
             "INSERT INTO compatibility (scheduler_name, kernel_version, is_compatible, message, timestamp) "
-            "VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(scheduler_name, kernel_version) DO UPDATE SET "
-            "is_compatible=excluded.is_compatible, message=excluded.message, timestamp=excluded.timestamp",
+            "VALUES (?, ?, ?, ?, ?)",
             (nombre, kernel, 1 if compatible else 0, mensaje, time.time())
         )
         conn.commit()
@@ -328,5 +337,51 @@ def obtener_historial_compatibilidad():
             "FROM compatibility ORDER BY timestamp DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        _close_conn(conn)
+
+
+_INFO_SCHED_SEED = [
+    ("beerland", "Prioritiza localidad y escalabilidad. Mantiene tareas en el mismo CPU para preservar caché, usando DSQ locales cuando el sistema no está saturado.", "https://github.com/sched-ext/scx"),
+    ("bpfland", "Planificador basado en vruntime que prioriza cargas interactivas sobre las de segundo plano. Considera la jerarquía de caché L2/L3 al asignar CPUs para reducir cache misses.", "https://github.com/sched-ext/scx"),
+    ("cake", "Adapta el algoritmo DRR++ (Deficit Round Robin) de CAKE para planificación CPU. Clasifica tareas en 4 niveles (Crítico/Interactivo/Marco/Masivo). Diseñado para gaming en CPUs modernos AMD/Intel.", "https://github.com/sched-ext/scx"),
+    ("cosmos", "Planificador ligero optimizado para preservar localidad tarea-CPU. Reduce contención de locks usando DSQ locales, escalando bien en sistemas con muchos CPUs.", "https://github.com/sched-ext/scx"),
+    ("flash", "Planificador EDF (Earliest Deadline First) con pesos de latencia dinámicos. Ajusta prioridades según qué tan temprano cada tarea libera la CPU. Ideal para multimedia y audio en tiempo real.", "https://github.com/sched-ext/scx"),
+    ("flow", "Planificador para entornos de servidor y cargas dinámicas con balanceo eficiente.", "https://github.com/sched-ext/scx"),
+    ("forge", "Planificador base orientado a IA, diseñado para ser personalizado y optimizado por agentes LLM. Política por defecto con colas por CPU y robo de trabajo entre núcleos.", "https://github.com/sched-ext/scx"),
+    ("lavd", "Implementa LAVD (Latency-criticality Aware Virtual Deadline). Mide qué tan crítica es la latencia de cada tarea y usa esa información para decisiones de planificación y asignación de timeslice.", "https://github.com/sched-ext/scx"),
+    ("pandemonium", "Clasifica cada tarea por comportamiento (frecuencia de wakeup, context switches, patrones de sueño) y adapta decisiones en tiempo real con un oscilador armónico amortiguado. Topología basada en resistencia efectiva.", "https://github.com/sched-ext/scx"),
+    ("p2dq", "Planificador de propósito general con algoritmo pick-two para balanceo de carga entre LLCs y nodos NUMA. Clasifica tareas interactivas en colas separadas con autoslice configurable.", "https://github.com/sched-ext/scx"),
+    ("rustland", "Planificador en espacio de usuario escrito en Rust. Prioriza cargas interactivas (gaming, video, streaming) sobre tareas CPU-intensivas de fondo. Diseñado para baja latencia.", "https://github.com/sched-ext/scx"),
+    ("rusty", "Planificador baseline en Rust que prioriza workloads interactivos. Original del ecosistema sched-ext. Buena opción para uso general y gaming.", "https://github.com/sched-ext/scx"),
+    ("tickless", "Planificador orientado a servidores para cloud, virtualización y HPC. Enruta eventos de planificación a través de CPUs primarias, desactivando ticks en otras para reducir ruido del sistema.", "https://github.com/sched-ext/scx"),
+]
+
+
+def sembrar_info_schedulers():
+    """Inserta o actualiza descripciones conocidas de schedulers."""
+    conn = _get_conn()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO scheduler_info (scheduler_name, description, url) "
+            "VALUES (?, ?, ?)",
+            _INFO_SCHED_SEED,
+        )
+        conn.commit()
+    finally:
+        _close_conn(conn)
+
+
+def obtener_info_scheduler(name):
+    """Retorna (description, url) para un scheduler, o (None, None) si no existe."""
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT description, url FROM scheduler_info WHERE scheduler_name = ?",
+            (name,),
+        ).fetchone()
+        if row:
+            return row["description"], row["url"]
+        return None, None
     finally:
         _close_conn(conn)

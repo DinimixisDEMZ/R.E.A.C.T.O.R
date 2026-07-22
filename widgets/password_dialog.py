@@ -18,6 +18,7 @@ class DialogoPassword(Adw.Dialog):
         self.set_content_width(350)
         self.set_content_height(200)
         self.on_success = on_success
+        self._validando = False
 
         box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=12,
@@ -40,6 +41,10 @@ class DialogoPassword(Adw.Dialog):
         self.entry.connect("changed", self.on_buffer_changed)
         box.append(self.entry)
 
+        self.lbl_error = Gtk.Label(label="", css_classes=["error"])
+        self.lbl_error.set_visible(False)
+        box.append(self.lbl_error)
+
         self.btn = Gtk.Button(label="Cancelar", css_classes=["pill"])
         self.btn.connect("clicked", self.validar)
         box.append(self.btn)
@@ -51,6 +56,9 @@ class DialogoPassword(Adw.Dialog):
         super().present(parent or self._parent_window)
 
     def on_buffer_changed(self, *args):
+        if self._validando:
+            return
+        self.lbl_error.set_visible(False)
         if self.entry.get_text():
             self.btn.set_label("Desbloquear")
             self.btn.add_css_class("suggested-action")
@@ -59,9 +67,26 @@ class DialogoPassword(Adw.Dialog):
             self.btn.remove_css_class("suggested-action")
 
     def validar(self, *args):
+        if self._validando:
+            return
         pwd = self.entry.get_text()
         if not pwd:
             self.close()
             return
-        self.on_success(pwd)
-        self.close()
+
+        self._validando = True
+        self.entry.set_sensitive(False)
+        self.btn.set_sensitive(False)
+
+        if self.on_success(pwd):
+            self.close()
+            del pwd
+        else:
+            self._validando = False
+            self.entry.set_sensitive(True)
+            self.btn.set_sensitive(True)
+            self.entry.set_text("")
+            self.lbl_error.set_label("Contraseña incorrecta o fallo en sudo.")
+            self.lbl_error.set_visible(True)
+            self.entry.grab_focus()
+            del pwd

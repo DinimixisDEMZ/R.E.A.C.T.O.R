@@ -33,12 +33,21 @@ class ScxManager:
                         self._sim_modo = args[i + 1]
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="OK (Simulated)", stderr="")
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="OK (Simulated)", stderr="")
-        return subprocess.run(args, capture_output=capture, text=True)
+        try:
+            return subprocess.run(args, capture_output=capture, text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(
+                args=args, returncode=124,
+                stderr="El comando scxctl excedió el tiempo de espera (15s)."
+            )
 
     def detener_todos(self):
         """Detiene todos los schedulers activos y mata procesos scx_."""
         self.ejecutar_con_sudo(["scxctl", "stop"])
-        self.ejecutar_con_sudo(["pkill", "-9", "-f", "scx_"])
+        try:
+            subprocess.run(["pkill", "-9", "-f", "scx_"], capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
     def ejecutar_con_sudo(self, cmd_list):
         """Wrapper seguro: Intenta usar sudo con la sesión activa."""
@@ -46,10 +55,22 @@ class ScxManager:
             self.scx_run(cmd_list)
             return subprocess.CompletedProcess(args=cmd_list, returncode=0, stdout="OK (Simulated)", stderr="")
         
-        check = subprocess.run(["sudo", "-n", "true"], capture_output=True)
+        try:
+            check = subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(
+                args=cmd_list, returncode=124,
+                stderr="La verificación de sudo excedió el tiempo de espera (5s)."
+            )
         if check.returncode == 0:
             full_cmd = ["sudo"] + cmd_list
-            return subprocess.run(full_cmd, capture_output=True, text=True)
+            try:
+                return subprocess.run(full_cmd, capture_output=True, text=True, timeout=30)
+            except subprocess.TimeoutExpired:
+                return subprocess.CompletedProcess(
+                    args=cmd_list, returncode=124,
+                    stderr="El comando excedió el tiempo de espera (30s)."
+                )
         else:
             return subprocess.CompletedProcess(args=cmd_list, returncode=1, stderr="Autenticación requerida. (Sesión expirada)")
 
@@ -92,7 +113,10 @@ class ScxManager:
         """Verifica si sudo tiene una sesión activa."""
         if self.modo_desarrollador:
             return True
-        return subprocess.run(["sudo", "-n", "true"], capture_output=True).returncode == 0
+        try:
+            return subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5).returncode == 0
+        except subprocess.TimeoutExpired:
+            return False
 
     def validar_sudo(self, pwd):
         """Valida la contraseña y refresca el timestamp de sudo.
@@ -100,11 +124,16 @@ class ScxManager:
         Returns:
             bool: True si la autenticación fue exitosa.
         """
-        proc = subprocess.run(
-            ["sudo", "-S", "-v"],
-            input=f"{pwd}\n",
-            capture_output=True,
-            text=True
-        )
+        try:
+            proc = subprocess.run(
+                ["sudo", "-S", "-v"],
+                input=f"{pwd}\n",
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            del pwd
+            return False
         del pwd
         return proc.returncode == 0

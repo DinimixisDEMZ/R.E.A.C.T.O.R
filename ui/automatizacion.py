@@ -10,7 +10,7 @@ import time
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib
+from gi.repository import Gtk, Adw, GLib, Gdk
 
 from core.benchmark import correr_benchmark
 from core.hybrid import correr_hybrid
@@ -170,6 +170,7 @@ def setup_automatizacion_ui(win):
 
     win._historial_runs = []
     win._indice_historial = -1
+    win._brutos_lock = threading.Lock()
     win._ajustando_pesos = False
 
     # ── Ajustar Pesos: one group, header suffix = recalc + icons ──
@@ -194,15 +195,15 @@ def setup_automatizacion_ui(win):
         win._preset_btns.append(btn)
     win._info_clicks = 0
     _chistes_peso = [
-        "Si ajustas los pesos y nada cambia, no es el scheduler... eres tú.",
+        "Si ajustas los pesos y nada cambia, no es el planificador... eres tú.",
         "45/45/10 es como pedir pizza: todos dicen que quieren lo mismo, pero nadie está conforme.",
-        "Un scheduler justo no existe. Solo hay planificadores menos injustos.",
-        "Si pones todo en 33%, obtienes... un scheduler que no sabe qué priorizar.",
+        "Un planificador justo no existe. Solo hay planificadores menos injustos.",
+        "Si pones todo en 33%, obtienes... un planificador que no sabe qué priorizar.",
         "La fluidez no es lo mismo que ir rápido. Es no quedarse sin gasolina a mitad de carrera.",
         "Fun fact: Linus Torvalds no ajusta sliders. Usa un stick.",
         "¿Más potencia? Tu Ryzen 7 ya está dando todo. Respira.",
         "Los pesos son como las reglas de la primera noche... siempre hay un traitor.",
-        "Si el scheduler te pregunta por qué lo torturas, dile que es para su bien.",
+        "Si el planificador te pregunta por qué lo torturas, dile que es para su bien.",
         "Dato curioso: el 99% de los ajustes de pesos son placebo. Pero el 1% restante... también.",
         "Ajustar pesos es como arreglar un auto en marcha. Divertido hasta que algo explota.",
         "Si te gusta el botón, dale otra vez. No tengo vida.",
@@ -350,22 +351,21 @@ def setup_automatizacion_ui(win):
     popover.set_child(lbl_info)
     btn_info.set_popover(popover)
 
-    win.btn_nav_prev = Gtk.Button(icon_name="go-previous-symbolic", tooltip_text="Run anterior", sensitive=False)
-    win.btn_nav_next = Gtk.Button(icon_name="go-next-symbolic", tooltip_text="Run siguiente", sensitive=False)
-    win.lbl_nav = Gtk.Label(label="", css_classes=["caption", "dim-label"], margin_start=6, margin_end=6)
-
-    win.btn_nav_prev.connect("clicked", lambda b: _navegar_historial(win, -1))
-    win.btn_nav_next.connect("clicked", lambda b: _navegar_historial(win, 1))
+    win.btn_hist = Gtk.MenuButton(
+        direction=Gtk.ArrowType.DOWN,
+        tooltip_text="Historial de runs",
+        css_classes=["flat"],
+        always_show_arrow=True,
+    )
+    win.popover_hist = Gtk.Popover()
+    win.popover_hist.set_size_request(320, 350)
+    win.btn_hist.set_popover(win.popover_hist)
 
     # [bombilla (izq)]
     header.pack_start(btn_info)
 
-    # [ < (contenido) > (centro) ]
-    box_nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, valign=Gtk.Align.CENTER)
-    box_nav.append(win.btn_nav_prev)
-    box_nav.append(win.lbl_nav)
-    box_nav.append(win.btn_nav_next)
-    header.set_title_widget(box_nav)
+    # [historial flyout (centro)]
+    header.set_title_widget(win.btn_hist)
 
     # [basurita (der)]
     btn_borrar = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Limpiar Análisis")
@@ -405,8 +405,7 @@ def iniciar_auto_test(win, btn):
     win.btn_auto.set_label("Detener")
     win.btn_auto.add_css_class("destructive-action")
     win.btn_auto.remove_css_class("suggested-action")
-    win.btn_nav_prev.set_sensitive(False)
-    win.btn_nav_next.set_sensitive(False)
+    win.btn_hist.set_sensitive(False)
     win.barra_progreso.set_visible(True)
     win.revealer_tiempo.set_reveal_child(True)
 
@@ -510,7 +509,7 @@ def iniciar_auto_test(win, btn):
                 log(win.text_view_logs_auto, f"Activando {sc}...", es_titulo=True)
                 res_switch = win.scx.ejecutar_con_sudo(["scxctl", "start", "-s", sc, "-m", "auto"])
                 if res_switch.returncode != 0:
-                    err_kernel = res_switch.stderr.strip() or "El scheduler no respondió a la señal de inicio."
+                    err_kernel = res_switch.stderr.strip() or "El planificador no respondió a la señal de inicio."
                     err_safe = GLib.markup_escape_text(err_kernel)
                     log(win.text_view_logs_auto, f"FALLO: No se pudo activar {sc}.\nDetalle: {err_kernel}", es_error=True)
                     GLib.idle_add(win.fila_ganador.set_subtitle, f"Error: {err_safe[:50]}...")
@@ -545,11 +544,12 @@ def iniciar_auto_test(win, btn):
                 if res:
                     if sc not in brutos:
                         brutos[sc] = {}
-                    brutos[sc][t] = res
+                    tipo_real = res["tipo"]
+                    brutos[sc][tipo_real] = res
 
-                    chart_idx = _MAPA_CHART.get(t)
+                    chart_idx = _MAPA_CHART.get(tipo_real)
                     if chart_idx is not None:
-                        val_v = calcular_valor_grafico(res, t)
+                        val_v = calcular_valor_grafico(res, tipo_real)
                         GLib.idle_add(win.grafico.actualizar_dato, sc, chart_idx, val_v)
 
             # Líder al vuelo
@@ -590,7 +590,8 @@ def iniciar_auto_test(win, btn):
                 win.ganador_final = max(scores_finales.keys(), key=lambda s: scores_finales[s]["score"])
                 winner_score = scores_finales[win.ganador_final]["score"]
                 win._scores_finales = scores_finales
-                win._brutos_finales = brutos
+                with win._brutos_lock:
+                    win._brutos_finales = brutos
 
                 GLib.idle_add(win.fila_ganador.set_title, f"Mejor Planificador: {win.ganador_final}")
                 win.desc_final = f"'{win.ganador_final}' ofrece la mejor propuesta integral con un {winner_score:.1f}% de eficacia de sistema."
@@ -625,8 +626,10 @@ def _poblar_ranking(win, pesos=None):
     else:
         pesos_norm = (0.45, 0.45, 0.10)
 
-    scores = calcular_scores_finales(win._brutos_finales, pesos=pesos_norm)
-    win._scores_finales = scores
+    with win._brutos_lock:
+        brutos = win._brutos_finales
+        scores = calcular_scores_finales(brutos, pesos=pesos_norm)
+        win._scores_finales = scores
 
     ordenados = sorted(scores.items(), key=lambda x: x[1]['score'], reverse=True)
 
@@ -752,41 +755,182 @@ def _reconstruir_brutos(resultados):
 
 
 def _refrescar_historial(win):
-    """Recarga la lista de runs desde la BD y actualiza los botones de navegación."""
+    """Recarga la lista de runs desde la BD y reconstruye el popover."""
     runs = consultar_runs_auto()
     win._historial_runs = runs
 
     if not runs:
         win._indice_historial = -1
-        win.lbl_nav.set_label("")
-        win.btn_nav_prev.set_sensitive(False)
-        win.btn_nav_next.set_sensitive(False)
+        win.btn_hist.set_label("Sin historial")
+        win.btn_hist.set_sensitive(False)
+        _vaciar_popover(win)
         return
 
-    # Si estamos viendo el último run, mantener la posición al final
     if win._indice_historial < 0 or win._indice_historial >= len(runs):
         win._indice_historial = len(runs) - 1
     elif win._indice_historial == len(runs) - 2 and len(runs) > 0:
-        # Nuevo run añadido al final, avanzar
         win._indice_historial = len(runs) - 1
 
+    _actualizar_popover(win)
     _actualizar_botones_nav(win)
 
 
+def _vaciar_popover(win):
+    """Limpia el contenido del popover de historial."""
+    popover = getattr(win, "popover_hist", None)
+    if popover is not None:
+        popover.set_child(None)
+
+
+def _actualizar_popover(win):
+    """Construye la lista de runs en el popover."""
+    runs = win._historial_runs
+    idx = win._indice_historial
+
+    scroll = Gtk.ScrolledWindow(
+        hscrollbar_policy=Gtk.PolicyType.NEVER,
+        vexpand=True,
+    )
+    listbox = Gtk.ListBox(
+        css_classes=["boxed-list"],
+        selection_mode=Gtk.SelectionMode.SINGLE,
+    )
+
+    for i, run in enumerate(runs):
+        row = _crear_fila_historial(run, i == idx)
+        row.run_index = i
+        listbox.append(row)
+
+    if 0 <= idx < len(runs):
+        listbox.select_row(listbox.get_row_at_index(idx))
+
+    listbox.connect("row-selected", lambda lb, row: _seleccionar_run(win, row))
+    scroll.set_child(listbox)
+    win.popover_hist.set_child(scroll)
+
+
+def _crear_fila_historial(run, seleccionado):
+    """Crea una fila del popover de historial."""
+    row = Gtk.ListBoxRow()
+    box = Gtk.Box(spacing=8, margin_start=10, margin_end=10, margin_top=5, margin_bottom=5)
+
+    tstamp = run.get("timestamp", 0)
+    kernel = run.get("kernel_version", "") or ""
+    scxctl = run.get("scxctl_version", "") or ""
+    run_id = run.get("id", 0)
+    fecha = datetime.datetime.fromtimestamp(tstamp).strftime("%d/%m %H:%M")
+
+    dot = Gtk.DrawingArea()
+    dot.set_content_width(8)
+    dot.set_content_height(8)
+    dot.set_valign(Gtk.Align.CENTER)
+    color = Gdk.RGBA()
+    color.parse("#2ec27e" if seleccionado else "#7e7e7e")
+    dot.set_draw_func(lambda a, cr, w, h, c=color: _pintar_dot(cr, w, h, c))
+    box.append(dot)
+
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    col.append(Gtk.Label(label=f"Run #{run_id} — {fecha}", xalign=0, css_classes=["heading"]))
+    subtitulo = f"Kernel {kernel}"
+    if scxctl:
+        subtitulo += f"  •  scxctl {scxctl}"
+    col.append(Gtk.Label(label=subtitulo, xalign=0, css_classes=["caption", "dim-label"]))
+    box.append(col)
+
+    row.set_child(box)
+    return row
+
+
+def _pintar_dot(cr, w, h, color):
+    cr.set_source_rgba(color.red, color.green, color.blue, 0.9)
+    cr.arc(w / 2, h / 2, 3.5, 0, 2 * 3.14159)
+    cr.fill()
+
+
+def _seleccionar_run(win, row):
+    """Salta directamente al run seleccionado en el popover."""
+    if row is None:
+        return
+    if getattr(win, "_cargando_historial", False):
+        return
+    idx = getattr(row, "run_index", -1)
+    if idx < 0 or idx >= len(win._historial_runs):
+        return
+
+    if idx == win._indice_historial:
+        return
+
+    win._cargando_historial = True
+    win._indice_historial = idx
+
+    run = win._historial_runs[idx]
+    resultados = cargar_resultados_de_run(run["id"])
+    brutos = _reconstruir_brutos(resultados)
+
+    if not brutos:
+        win.toast_overlay.add_toast(Adw.Toast.new("Este run no contiene datos válidos."))
+        win._cargando_historial = False
+        return
+
+    with win._brutos_lock:
+        win._brutos_finales = brutos
+
+    scores_finales = calcular_scores_finales(brutos)
+    win.ganador_final = max(scores_finales.keys(), key=lambda s: scores_finales[s]["score"])
+
+    win.grafico.datos_raw = {}
+    win.grafico.valores_animados = {}
+    win.grafico.max_por_categoria = [1.0] * win.grafico.num_categorias
+
+    while (c := win.box_leyenda.get_first_child()):
+        win.box_leyenda.remove(c)
+
+    for sc, sdata in brutos.items():
+        win.grafico.registrar_scheduler(sc)
+        crear_chip_leyenda(sc, win.grafico, win.box_leyenda)
+        for tt, res in sdata.items():
+            chart_idx = _MAPA_CHART.get(tt)
+            if chart_idx is not None:
+                val_v = calcular_valor_grafico(res, tt)
+                try:
+                    win.grafico.actualizar_dato(sc, chart_idx, float(val_v) if not isinstance(val_v, (int, float)) else val_v)
+                except (ValueError, TypeError):
+                    continue
+
+    win.grafico.queue_draw()
+
+    win.fila_ganador.set_expanded(True)
+    win.btn_auto.set_label("Determinar")
+    win.btn_auto.set_sensitive(True)
+    win.btn_auto.add_css_class("suggested-action")
+    win.btn_auto.remove_css_class("destructive-action")
+
+    if hasattr(win, '_ajustando_pesos'):
+        _recalcular_ranking(win)
+    else:
+        _poblar_ranking(win)
+
+    _actualizar_popover(win)
+    _actualizar_botones_nav(win)
+
+    win.toast_overlay.add_toast(Adw.Toast.new(
+        f"Cargado: {run.get('kernel_version', '')}"
+    ))
+    win._cargando_historial = False
+
+
 def _actualizar_botones_nav(win):
-    """Actualiza el estado y etiqueta de los botones de navegación."""
+    """Actualiza la etiqueta del botón de historial."""
     idx = win._indice_historial
     total = len(win._historial_runs)
-
-    win.btn_nav_prev.set_sensitive(idx > 0)
-    win.btn_nav_next.set_sensitive(idx < total - 1)
+    win.btn_hist.set_sensitive(total > 0)
 
     if 0 <= idx < total:
         ts = win._historial_runs[idx].get("timestamp", 0)
         dt = datetime.datetime.fromtimestamp(ts)
-        win.lbl_nav.set_label(f"Run {idx+1}/{total} — {dt.strftime('%d/%m %H:%M')}")
+        win.btn_hist.set_label(f"Run {idx + 1}/{total} — {dt.strftime('%d/%m %H:%M')}")
     else:
-        win.lbl_nav.set_label("")
+        win.btn_hist.set_label("Sin historial")
 
 
 def _navegar_historial(win, direccion):

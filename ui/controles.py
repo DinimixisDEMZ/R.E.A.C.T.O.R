@@ -2,6 +2,7 @@
 Pestaña de Controles: Estado actual, selección de scheduler/modo, acciones.
 """
 
+import math
 import threading
 
 import gi
@@ -9,8 +10,9 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
-from core.database import activar_db_temporal, desactivar_db_temporal
+from core.database import activar_db_temporal, desactivar_db_temporal, obtener_info_scheduler
 from ui.disponibilidad import recargar_disponibilidad_ui
+from utils.helpers import generar_color_hash
 
 
 def setup_controles_ui(win):
@@ -39,6 +41,59 @@ def setup_controles_ui(win):
     grupo_config.add(win.combo_schedulers)
     grupo_config.add(win.combo_modos)
 
+    grupo_info = Adw.PreferencesGroup(title="Información del Planificador")
+    win._sched_info_card = Gtk.Frame(css_classes=["card"])
+    win._sched_info_card.set_visible(False)
+    win._sched_info_card.set_visible(False)
+    card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=12, margin_end=12, margin_top=10, margin_bottom=10)
+
+    title_row = Gtk.Box(spacing=6)
+    win._sched_info_dot = Gtk.DrawingArea()
+    win._sched_info_dot.set_content_width(8)
+    win._sched_info_dot.set_content_height(8)
+    win._sched_info_dot.set_valign(Gtk.Align.CENTER)
+    win._sched_info_dot.set_draw_func(lambda *_: None)
+    title_row.append(win._sched_info_dot)
+    win._sched_info_title = Gtk.Label(label="", css_classes=["heading"], xalign=0)
+    title_row.append(win._sched_info_title)
+    card_box.append(title_row)
+
+    win._sched_info_desc = Gtk.Label(label="", xalign=0, wrap=True, css_classes=["dim-label"])
+    card_box.append(win._sched_info_desc)
+    win._sched_info_link = Gtk.LinkButton(label="Abrir documentación »", uri="https://github.com/sched-ext/scx", halign=Gtk.Align.START)
+    card_box.append(win._sched_info_link)
+
+    win._sched_info_card.set_child(card_box)
+    grupo_info.add(win._sched_info_card)
+
+    def _actualizar_info_sched(*_args):
+        item = win.combo_schedulers.get_selected_item()
+        if item:
+            name = item.get_string()
+            desc, url = obtener_info_scheduler(name)
+            win._sched_info_title.set_label(name)
+            if desc:
+                win._sched_info_desc.set_label(desc)
+                win._sched_info_link.set_uri(url or "https://github.com/sched-ext/scx")
+            else:
+                win._sched_info_desc.set_label("No hay información disponible para este planificador. Consultá la documentación oficial para más detalles.")
+                win._sched_info_link.set_uri("https://github.com/sched-ext/scx")
+
+            r, g, b = generar_color_hash(name)
+            win._sched_info_dot.set_draw_func(lambda a, cr, w, h, cr_r=r, cr_g=g, cr_b=b: (
+                cr.set_source_rgb(cr_r, cr_g, cr_b),
+                cr.arc(w / 2, h / 2, 3.5, 0, 2 * math.pi),
+                cr.fill(),
+            ))
+            win._sched_info_dot.queue_draw()
+            win._sched_info_card.set_visible(True)
+        else:
+            win._sched_info_card.set_visible(False)
+
+    win.combo_schedulers.connect("notify::selected-item", _actualizar_info_sched)
+    GLib.idle_add(lambda: _actualizar_info_sched())
+
+    pref_page.add(grupo_info)
     pref_page.add(grupo_estado)
     pref_page.add(grupo_config)
 
@@ -118,7 +173,7 @@ def ejecutar_mantenimiento(win, btn, acc):
                     if acc == "start" and ("already" in error_msg or "running" in error_msg or not error_msg):
                         mensaje = "Ya se está ejecutando"
                     elif acc == "stop" and ("not running" in error_msg or not error_msg):
-                        mensaje = "No hay ningún scheduler activo"
+                        mensaje = "No hay ningún planificador activo"
                     else:
                         mensaje = result.stderr.strip() or "Comando fallido"
 
@@ -152,7 +207,12 @@ def aplicar_cambio_scheduler(win, btn=None):
     def _proceder():
         def _aplicar():
             try:
-                result = win.scx.ejecutar_con_sudo(["scxctl", "switch", "-s", sched, "-m", modo])
+                sc_actual, _ = win.scx.obtener_estado()
+                if sc_actual:
+                    cmd = ["scxctl", "switch", "-s", sched, "-m", modo]
+                else:
+                    cmd = ["scxctl", "start", "-s", sched, "-m", modo]
+                result = win.scx.ejecutar_con_sudo(cmd)
 
                 if result.returncode != 0:
                     err_safe = GLib.markup_escape_text(result.stderr.strip() or 'Cambio fallido')

@@ -6,6 +6,14 @@ Calcula scores ponderados con media armónica para evaluar schedulers.
 HYBRID_TYPES = {"fork", "compile", "loaded"}
 
 
+def _first(*values):
+    """Retorna el primer valor no None, o 0 si todos son None."""
+    for v in values:
+        if v is not None:
+            return v
+    return 0
+
+
 def calcular_score_categorias(data, mejores, pesos=(0.45, 0.45, 0.10)):
     """Calcula el score de un scheduler por categoría.
     
@@ -76,16 +84,15 @@ def calcular_mejores(brutos, tipos=("cpu", "threads", "memory")):
             if t_tipo not in entry:
                 continue
             item = entry[t_tipo]
-            # Compatibilidad: aceptar 'valor' o 'val'
-            val = item.get('valor') or item.get('val') or (item.get('metrics') or {}).get('bogo-ops-per-second-real-time') or 0
+            val = _first(item.get('valor'), item.get('val'), (item.get('metrics') or {}).get('bogo-ops-per-second-real-time'))
             p95 = item.get('p95')
-            if not p95:
+            if p95 is None:
                 m = item.get('metrics') or {}
-                ns = m.get('nanosecs-per-context-switch-pipe-method') or m.get('nanosecs-per-context-switch') or 0
+                ns = _first(m.get('nanosecs-per-context-switch-pipe-method'), m.get('nanosecs-per-context-switch'))
                 if ns:
                     p95 = ns / 1000.0
                 else:
-                    ns_mutex = m.get('nanosecs-per-mutex') or 0
+                    ns_mutex = m.get('nanosecs-per-mutex')
                     p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
 
             vals.append(val)
@@ -107,25 +114,25 @@ def _normalizar_entrada(item):
     Devuelve: {val, p95, fairness, throughput_per_core, efficiency, cores, raw_metrics}
     """
     m = item.get('metrics') or {}
-    val = item.get('valor') or item.get('val') or m.get('bogo-ops-per-second-real-time') or 0
+    val = _first(item.get('valor'), item.get('val'), m.get('bogo-ops-per-second-real-time'))
     p95 = item.get('p95')
-    if not p95:
-        ns = m.get('nanosecs-per-context-switch-pipe-method') or m.get('nanosecs-per-context-switch') or 0
+    if p95 is None:
+        ns = _first(m.get('nanosecs-per-context-switch-pipe-method'), m.get('nanosecs-per-context-switch'))
         if ns:
             p95 = ns / 1000.0
         else:
-            ns_mutex = m.get('nanosecs-per-mutex') or 0
+            ns_mutex = m.get('nanosecs-per-mutex')
             p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
 
     fairness = item.get('fairness')
     if fairness is None:
-        cpu_usage = item.get('cpu_usage') or m.get('cpu-usage-per-instance') or 0
+        cpu_usage = _first(item.get('cpu_usage'), m.get('cpu-usage-per-instance'))
         fairness = max(0.0, (100.0 - cpu_usage) / 100.0) if cpu_usage else 0.5
 
-    cores = item.get('cores') or m.get('cpus') or 1
+    cores = _first(item.get('cores'), m.get('cpus')) or 1
     throughput_per_core = (val / cores) if cores else val
 
-    ops_usr_sys = item.get('ops_usr_sys') or m.get('bogo-ops-per-second-usr-sys-time') or 0
+    ops_usr_sys = _first(item.get('ops_usr_sys'), m.get('bogo-ops-per-second-usr-sys-time'))
     efficiency = (val / ops_usr_sys) if ops_usr_sys and ops_usr_sys > 0 else val
 
     return {
@@ -178,7 +185,7 @@ def calcular_scores_finales(brutos, pesos=(0.45, 0.45, 0.10), tipos=None):
     return scores
 
 
-def calcular_ranking_manual(datos_rendimiento, pesos=(0.40, 0.40, 0.20)):
+def calcular_ranking_manual(datos_rendimiento, pesos=(0.45, 0.45, 0.10)):
     """Calcula el ranking para pruebas manuales (Pestaña de Rendimiento).
     
     Soporta tanto stress-ng (cpu, threads, memory) como hyperfine (latencia_*).

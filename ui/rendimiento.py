@@ -286,7 +286,7 @@ def actualizar_interfaz_ranking(win):
         lider = max(scores, key=scores.get)
         score_v = scores[lider]
         win.fila_lider_manual.set_title(f"Mejor Planificador: {lider}")
-        win.fila_lider_manual.set_subtitle(f"Puntuaci\u00f3n: {score_v:.1f}% (Equilibrio 40/40/20 | Potencia/Respuesta/Fluidez)")
+        win.fila_lider_manual.set_subtitle(f"Puntuaci\u00f3n: {score_v:.1f}% (Equilibrio 45/45/10 | Potencia/Respuesta/Fluidez)")
 
 
 def limpiar_ranking(win, btn):
