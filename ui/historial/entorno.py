@@ -62,7 +62,7 @@ def _crear_pagina_entorno(win):
         ("preferences-system-time-symbolic", tiempo_act, f"Actividad desde: {tiempo_act}"),
     ]
     for icon, text, tip in datos_chips:
-        chip = Gtk.Box(spacing=5, css_classes=["card", "pill"])
+        chip = Gtk.Box(spacing=5, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
         chip.set_margin_top(2)
         chip.set_margin_bottom(2)
         chip.set_has_tooltip(True)

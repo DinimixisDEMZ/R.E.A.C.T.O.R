@@ -21,7 +21,7 @@ def crear_chip_leyenda(nombre, grafico, box_leyenda):
     """
     r, g, b = grafico.colores.get(nombre.lower(), (0.5, 0.5, 0.5))
 
-    chip = Gtk.Box(spacing=10, css_classes=["card", "pill"])
+    chip = Gtk.Box(spacing=10, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
     chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
 
     # Indicador de color

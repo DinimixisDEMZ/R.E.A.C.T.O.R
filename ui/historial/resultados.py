@@ -65,7 +65,7 @@ def _reconstruir_chips(win):
     for planif in planificadores:
         r, g, b = generar_color_hash(planif)
 
-        chip = Gtk.Box(spacing=6, css_classes=["card", "pill"])
+        chip = Gtk.Box(spacing=6, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
         chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
 
         punto = Gtk.DrawingArea()

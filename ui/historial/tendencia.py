@@ -29,7 +29,7 @@ class _FilaTabla(GObject.GObject):
 
 
 def _crear_tarjeta_resumen(icon, texto):
-    card = Gtk.Box(spacing=4, css_classes=["card", "pill"])
+    card = Gtk.Box(spacing=4, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
     card.set_margin_top(2)
     card.set_margin_bottom(2)
     img = Gtk.Image(icon_name=icon, pixel_size=12)
@@ -180,7 +180,7 @@ def _refrescar_tendencia(win):
         r, g, b = generar_color_hash(planif)
         est = estadisticas.get(planif, {})
         es_visible = planif not in win._hist_chart_ocultos
-        chip = Gtk.Box(spacing=10, css_classes=["card", "pill"])
+        chip = Gtk.Box(spacing=10, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
         chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
         chip.set_has_tooltip(True)
         chip.set_tooltip_text(
