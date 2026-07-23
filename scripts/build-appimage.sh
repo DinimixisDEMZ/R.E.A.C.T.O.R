@@ -1,84 +1,51 @@
 #!/bin/bash
-# Build script for R.E.A.C.T.O.R AppImage
+# Build script for R.E.A.C.T.O.R AppImage (system GTK approach)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APPIMAGE_SRC="$ROOT/appimage"
 BUILD_DIR="$ROOT/build/appimage"
 APP_DIR="$BUILD_DIR/R.E.A.C.T.O.R.AppDir"
 OUTPUT="$ROOT/R.E.A.C.T.O.R-x86_64.AppImage"
 
 echo "=== Construyendo AppImage de R.E.A.C.T.O.R ==="
 
-# ── Preparar directorios ──
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/usr/bin"
 mkdir -p "$APP_DIR/usr/share/reactor"
 mkdir -p "$APP_DIR/usr/share/applications"
 mkdir -p "$APP_DIR/usr/share/icons/hicolor/scalable/apps"
 
-# ── Copiar entry point ──
-cp "$BUILD_DIR/AppRun" "$APP_DIR/AppRun"
+cp "$APPIMAGE_SRC/AppRun" "$APP_DIR/AppRun"
 chmod +x "$APP_DIR/AppRun"
 
-# ── Copiar aplicación ──
 echo "Copiando aplicación..."
-rsync -a --exclude='__pycache__' \
-         --exclude='*.pyc' \
-         --exclude='.git' \
-         --exclude='build/' \
-         --exclude='node_modules/' \
-         --exclude='design/' \
-         "$ROOT/"*.py \
-         "$ROOT/core/" \
-         "$ROOT/ui/" \
-         "$ROOT/utils/" \
-         "$ROOT/widgets/" \
-         "$APP_DIR/usr/share/reactor/"
+cp "$ROOT/"*.py "$APP_DIR/usr/share/reactor/"
+cp -r "$ROOT/core" "$ROOT/ui" "$ROOT/utils" "$ROOT/widgets" "$APP_DIR/usr/share/reactor/"
+find "$APP_DIR/usr/share/reactor/" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
-# ── Copiar binarios del sistema ──
 echo "Copiando binarios..."
 for bin in scxctl stress-ng hyperfine; do
     path=$(which "$bin" 2>/dev/null || true)
-    if [ -n "$path" ]; then
-        cp -L "$path" "$APP_DIR/usr/bin/$bin"
-        echo "  ✓ $bin ($path)"
-    else
-        echo "  ⚠ $bin no encontrado"
-    fi
+    [ -n "$path" ] && cp -L "$path" "$APP_DIR/usr/bin/$bin" && echo "  ✓ $bin"
 done
 
-# ── Copiar .desktop e icono ──
-cp "$BUILD_DIR/R.E.A.C.T.O.R.desktop" "$APP_DIR/usr/share/applications/"
-cp "$BUILD_DIR/reactor.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/reactor.svg"
-cp "$BUILD_DIR/reactor.svg" "$APP_DIR/reactor.svg"
+cp "$APPIMAGE_SRC/R.E.A.C.T.O.R.desktop" "$APP_DIR/"
+cp "$APPIMAGE_SRC/reactor.svg" "$APP_DIR/"
+cp "$APPIMAGE_SRC/R.E.A.C.T.O.R.desktop" "$APP_DIR/usr/share/applications/"
+cp "$APPIMAGE_SRC/reactor.svg" "$APP_DIR/usr/share/icons/hicolor/scalable/apps/reactor.svg"
 
-# ── Descargar linuxdeploy si no existe ──
-LINUXDEPLOY="$BUILD_DIR/linuxdeploy-x86_64.AppImage"
-if [ ! -f "$LINUXDEPLOY" ]; then
-    echo "Descargando linuxdeploy..."
-    wget -q -O "$LINUXDEPLOY" \
-        "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-    chmod +x "$LINUXDEPLOY"
+# ── Descargar appimagetool si no existe ──
+APPIMAGETOOL="$BUILD_DIR/appimagetool-x86_64.AppImage"
+if [ ! -f "$APPIMAGETOOL" ]; then
+    echo "Descargando appimagetool..."
+    wget -q -O "$APPIMAGETOOL" \
+        "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+    chmod +x "$APPIMAGETOOL"
 fi
 
-LINUXDEPLOY_GTK="$BUILD_DIR/linuxdeploy-plugin-gtk-x86_64.AppImage"
-if [ ! -f "$LINUXDEPLOY_GTK" ]; then
-    echo "Descargando linuxdeploy-plugin-gtk..."
-    wget -q -O "$LINUXDEPLOY_GTK" \
-        "https://github.com/linuxdeploy/linuxdeploy-plugin-gtk/releases/download/continuous/linuxdeploy-plugin-gtk-x86_64.AppImage"
-    chmod +x "$LINUXDEPLOY_GTK"
-fi
-
-# ── Ejecutar linuxdeploy ──
-echo "Ejecutando linuxdeploy..."
-export LDAI_OUTPUT="$OUTPUT"
-export DEPLOY_GTK_VERSION=4
-
-./linuxdeploy-x86_64.AppImage \
-    --appdir "$APP_DIR" \
-    --plugin gtk \
-    --output appimage \
-    2>&1 | grep -v "^$"
+echo "Generando AppImage..."
+ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run "$APP_DIR" "$OUTPUT" 2>&1 | grep -v "^$"
 
 echo ""
 echo "✓ AppImage generada: $OUTPUT"

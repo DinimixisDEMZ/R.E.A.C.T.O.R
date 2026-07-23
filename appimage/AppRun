@@ -1,10 +1,9 @@
 #!/bin/bash
 # AppImage entry point for R.E.A.C.T.O.R
+# Uses system GTK/libraries, only bundles app code + binaries
 SELF="$(readlink -f "$0")"
 HERE="${SELF%/*}"
 export PATH="$HERE/usr/bin:$PATH"
-export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
 export PYTHONPATH="$HERE/usr/share/reactor:$PYTHONPATH"
 cd "$HERE/usr/share/reactor"
 exec python3 main.py "$@"
