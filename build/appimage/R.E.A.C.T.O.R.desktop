@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=R.E.A.C.T.O.R
+Comment=Reactor de Experimentación Avanzada Concurrente Telúrico para Optimización de Rendimiento
+Exec=AppRun
+Icon=reactor
+Type=Application
+Categories=Utility;
+Terminal=false
+X-AppImage-Version=0.7.0

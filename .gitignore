@@ -36,3 +36,6 @@ Thumbs.db
 .env
 *.pem
 *.key
+
+# AppImage
+*.AppImage
