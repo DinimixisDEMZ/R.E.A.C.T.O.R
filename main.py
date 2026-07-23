@@ -15,27 +15,53 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 
-def main():
-    # ── Verificación de Dependencias ──
-    errores_criticos = []
+_HERRAMIENTAS = [
+    ("scxctl", "scxctl", True, "Gestión de planificadores SCX"),
+    ("stress-ng", "stress-ng", False, "Benchmarks de estrés"),
+    ("hyperfine", "hyperfine", False, "Benchmarks de precisión"),
+]
 
-    # 1. Verificar Linux
+_CRITICO_SIN_LINUX = (
+    "Sistema operativo incompatible: {}\n"
+    "Esta herramienta solo funciona en Linux con soporte para SCX schedulers."
+)
+
+
+def _verificar_herramientas():
+    criticos = []
+    advertencias = []
+
     if platform.system() != "Linux":
-        errores_criticos.append(
-            f"Sistema operativo incompatible: {platform.system()}\n"
-            "Esta herramienta solo funciona en Linux con soporte para SCX schedulers."
+        criticos.append(_CRITICO_SIN_LINUX.format(platform.system()))
+
+    for nombre, binario, critico, proposito in _HERRAMIENTAS:
+        if not shutil.which(binario):
+            msg = f"{nombre} no encontrado. Necesario para: {proposito}."
+            if critico:
+                criticos.append(msg)
+            else:
+                advertencias.append(msg)
+
+    # Verificar run0 o sudo
+    if not shutil.which("run0") and not shutil.which("sudo"):
+        advertencias.append(
+            "No se encontró run0 ni sudo. Las operaciones que requieran "
+            "privilegios no estarán disponibles."
         )
 
-    # 2. Verificar scxctl
-    if not shutil.which("scxctl"):
-        errores_criticos.append("scxctl no encontrado. Es necesario para gestionar los planificadores del sistema.")
+    return criticos, advertencias
 
-    # Si hay errores críticos, mostrar diálogo de error y salir
-    if errores_criticos:
-        _mostrar_error_critico(errores_criticos)
+
+def main():
+    criticos, advertencias = _verificar_herramientas()
+
+    if criticos:
+        _mostrar_verificacion(criticos, advertencias, bloqueante=True)
         return 1
 
-    # ── Arranque ──
+    if advertencias:
+        _mostrar_verificacion(advertencias, bloqueante=False)
+
     from app import VentanaSimple
 
     class MiApp(Adw.Application):
@@ -47,45 +73,76 @@ def main():
     return app.run(sys.argv)
 
 
-def _mostrar_error_critico(errores):
-    """Muestra una ventana de error para dependencias faltantes."""
-    def error_activate(app):
-        win = Adw.Window(application=app, title="Error de Sistema")
-        win.set_default_size(500, 500)
+def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
+    titulo = "Dependencias faltantes" if bloqueante else "Advertencias"
+    desc = (
+        "No se cumplen los requisitos necesarios para ejecutar todas las "
+        "funcionalidades del gestor."
+        if bloqueante else
+        "La aplicación puede iniciarse, pero algunas funcionalidades estarán limitadas."
+    )
+    icono = "dialog-error-symbolic" if bloqueante else "dialog-warning-symbolic"
 
-        status_page = Adw.StatusPage(
-            icon_name="dialog-error-symbolic",
-            title="Incompatible",
-            description="No se cumplen los requisitos necesarios para ejecutar el gestor."
+    def activate(app):
+        win = Adw.Window(application=app, title=titulo)
+        win.set_default_size(500, 450)
+
+        status = Adw.StatusPage(icon_name=icono, title=titulo, description=desc)
+        caja = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+
+        lista = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
+        for msg in mensajes:
+            row = Adw.ActionRow(title=msg, subtitle="")
+            lista.append(row)
+        caja.append(lista)
+
+        if advertencias:
+            adv_lista = Gtk.ListBox(
+                css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE
+            )
+            for msg in advertencias:
+                row = Adw.ActionRow(title=msg, subtitle="")
+                adv_lista.append(row)
+            caja.append(adv_lista)
+
+        if not bloqueante:
+            btn_cont = Gtk.Button(
+                label="Continuar de todas formas",
+                halign=Gtk.Align.CENTER,
+                css_classes=["suggested-action", "pill"],
+            )
+            btn_cont.set_margin_top(12)
+            btn_cont.connect("clicked", lambda b: (win.close(), app.quit()))
+            caja.append(btn_cont)
+
+        btn_salir = Gtk.Button(
+            label="Cerrar Aplicación" if bloqueante else "Salir",
+            halign=Gtk.Align.CENTER,
+            css_classes=["destructive-action", "pill"] if bloqueante else ["pill"],
         )
-
-        caja_detalles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
-
-        lista_errores = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
-        for err in errores:
-            row = Adw.ActionRow(title=err)
-            lista_errores.append(row)
-        caja_detalles.append(lista_errores)
-
-        btn_salir = Gtk.Button(label="Cerrar Aplicación", halign=Gtk.Align.CENTER)
-        btn_salir.add_css_class("destructive-action")
-        btn_salir.add_css_class("pill")
-        btn_salir.set_margin_top(12)
+        btn_salir.set_margin_top(6)
         btn_salir.connect("clicked", lambda b: app.quit())
-        caja_detalles.append(btn_salir)
+        caja.append(btn_salir)
 
         clamp = Adw.Clamp(maximum_size=450, tightening_threshold=300)
-        clamp.set_child(caja_detalles)
-        status_page.set_child(clamp)
+        clamp.set_child(caja)
+        status.set_child(clamp)
 
-        view = Adw.ToolbarView(content=status_page)
+        view = Adw.ToolbarView(content=status)
         win.set_content(view)
         win.present()
 
-    app_err = Adw.Application(application_id="com.dinimixis.scheduler.error")
-    app_err.connect("activate", error_activate)
-    app_err.run([])
-    sys.exit(1)
+    app_id = (
+        "com.dinimixis.reactor.error"
+        if bloqueante else
+        "com.dinimixis.reactor.warning"
+    )
+    app = Adw.Application(application_id=app_id)
+    app.connect("activate", activate)
+    app.run([])
+
+    if bloqueante:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
