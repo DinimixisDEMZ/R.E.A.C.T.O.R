@@ -16,8 +16,8 @@ from ui.controles import setup_controles_ui
 from ui.rendimiento import setup_rendimiento_ui, actualizar_interfaz_ranking
 from ui.automatizacion import setup_automatizacion_ui
 from ui.disponibilidad import setup_disponibilidad_ui
-from ui.diagnostico import setup_diagnostico_ui
-from ui.historial import setup_historial_ui
+from ui.diagnostico import configurar_ui_diagnostico
+from ui.historial import configurar_ui_historial
 from core.database import inicializar_db, obtener_versiones, detectar_cambio_version, cargar_compatibilidad
 from widgets.password_dialog import DialogoPassword
 
@@ -75,9 +75,9 @@ class VentanaSimple(Adw.ApplicationWindow):
         self.pag_disponibilidad = Adw.NavigationPage(title="Disponibilidad", tag="page_d")
         setup_disponibilidad_ui(self)
         self.pag_historial = Adw.NavigationPage(title="Historial", tag="page_f")
-        setup_historial_ui(self)
+        configurar_ui_historial(self)
         # Diagnóstico
-        setup_diagnostico_ui(self)
+        configurar_ui_diagnostico(self)
 
 
         # ── CSS personalizado ──

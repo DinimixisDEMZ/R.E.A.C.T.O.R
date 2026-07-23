@@ -21,8 +21,11 @@ Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona
 - Control de schedulers SCX mediante `scxctl`.
 - Persistencia de historial en SQLite (`~/.local/share/scxctl/history.db`).
 - Comparación de resultados con ponderaciones ajustables.
-- Vista de logs técnicos y gráficos de tendencias.
+- Vista de logs técnicos y gráficos de tendencias con tabla comparativa nativa.
 - Verificación de compatibilidad con kernel y componentes.
+- Diagnóstico en vivo: CPU, memoria, temperatura, planificador, eventos sched_ext.
+- Terminal scxtop embebida para monitoreo avanzado.
+- RadarChart de rendimiento para comparación visual rápida.
 
 ## Requisitos
 
@@ -40,15 +43,27 @@ Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona
 - `main.py` - punto de entrada, valida dependencias y arranca la aplicación.
 - `app.py` - ventana principal y configuración global de la aplicación.
 - `core/` - lógica de negocio:
-  - `scx.py` - interacción con `scxctl` y sudo.
+  - `scx.py` - interacción con `scxctl`.
   - `benchmark.py` - ejecución de benchmarks.
   - `scoring.py` - cálculo de ranking y scores.
   - `database.py` - almacenamiento de historial y compatibilidad.
   - `thermal.py` - monitor térmico.
   - `hybrid.py` - lógica de benchmarks híbridos.
-- `ui/` - pestañas y componentes visuales.
-- `utils/` - utilidades de ayuda.
-- `widgets/` - componentes GTK reutilizables.
+- `ui/historial/` - historial de resultados:
+  - `pagina.py` - página con InLineViewSwitcher (Resultados / Tendencia / Entorno).
+  - `constantes.py` - tipos de prueba y rangos de fecha.
+  - `resultados.py` - lista de resultados con chips, filtros y refresh.
+  - `tendencia.py` - gráfico Cairo + tabla comparativa Gtk.ColumnView sortable.
+  - `dibujo.py` - renderizado Cairo, hover tooltip con crosshair, fade-out.
+  - `entorno.py` - info del sistema, hardware y RadarChart.
+- `ui/diagnostico/` - diagnóstico en vivo:
+  - `pagina.py` - página con InLineViewSwitcher (Monitor / scxtop).
+  - `monitoreo.py` - monitor en vivo CPU, memoria, temperatura, planificador, eventos.
+  - `scxtop.py` - terminal VTE embebida para scxtop.
+- `ui/` - demás pestañas (rendimiento, automatización, disponibilidad, controles, etc.)
+- `utils/` - utilidades de ayuda (`helpers.py` con parsers de lscpu, generación de color, etc.).
+- `widgets/` - componentes GTK reutilizables (`radar.py` con RadarChart).
+- `design/` - assets de diseño (`vte_colors.py`, etc.).
 
 ## Uso
 
