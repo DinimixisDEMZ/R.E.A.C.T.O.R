@@ -52,8 +52,31 @@ def _verificar_herramientas():
     return criticos, advertencias
 
 
+def _verificar_importaciones():
+    advertencias = []
+
+    try:
+        gi.require_version("Vte", "3.91")
+        from gi.repository import Vte
+    except (ImportError, ValueError):
+        advertencias.append(
+            "Vte no encontrado. La pestaña scxtop no estará disponible. "
+            "Instale el paquete gir1.2-vte-3.91 o similar."
+        )
+
+    try:
+        import cairo
+    except ImportError:
+        advertencias.append(
+            "Cairo no encontrado. Los gráficos radar no se mostrarán."
+        )
+
+    return advertencias
+
+
 def main():
     criticos, advertencias = _verificar_herramientas()
+    advertencias.extend(_verificar_importaciones())
 
     if criticos:
         _mostrar_verificacion(criticos, advertencias, bloqueante=True)
