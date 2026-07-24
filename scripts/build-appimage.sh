@@ -21,7 +21,7 @@ chmod +x "$APP_DIR/AppRun"
 
 echo "Copiando aplicación..."
 cp "$ROOT/"*.py "$APP_DIR/usr/share/reactor/"
-cp -r "$ROOT/core" "$ROOT/ui" "$ROOT/utils" "$ROOT/widgets" "$APP_DIR/usr/share/reactor/"
+cp -r "$ROOT/core" "$ROOT/ui" "$ROOT/utils" "$ROOT/widgets" "$ROOT/data" "$APP_DIR/usr/share/reactor/"
 find "$APP_DIR/usr/share/reactor/" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
 echo "Copiando binarios..."

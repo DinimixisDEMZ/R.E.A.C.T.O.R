@@ -45,6 +45,10 @@ Crear build AppImage, mejorar verificador de herramientas al inicio, centrar chi
 - `permissions: contents: write` necesario para crear releases
 - Primer release exitoso: `v0.7.0` 🎉
 
+### v0.7.3
+- Incluido `data/` en build script del AppImage para empaquetar iconos del IDK
+- Version bump a 0.7.3
+
 ### v0.7.2
 - `data/icons/Adwaita/` — Bundle completo de 44 iconos desde `icon-development-kit`
 - `utils/iconos.py` — Módulo centralizado con constantes + `establecer_iconos_idk()`

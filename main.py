@@ -1,6 +1,6 @@
 """
 REACTOR - Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)
-Versión 0.7.2 | © 2026 UNHARMET
+Versión 0.7.3 | © 2026 UNHARMET
 
 Entry Point: Verificación de dependencias y arranque de la aplicación.
 """
