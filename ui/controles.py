@@ -13,6 +13,7 @@ from gi.repository import Gtk, Adw, GLib
 from core.database import activar_db_temporal, desactivar_db_temporal, obtener_info_scheduler
 from ui.disponibilidad import recargar_disponibilidad_ui
 from utils.helpers import generar_color_hash
+from utils.iconos import establecer_iconos_idk
 
 
 def setup_controles_ui(win):
@@ -129,6 +130,22 @@ def setup_controles_ui(win):
     fila_dev.add_suffix(sw_dev)
     grupo_dev.add(fila_dev)
     pref_page.add(grupo_dev)
+
+    grupo_iconos = Adw.PreferencesGroup(title="Iconos")
+    fila_iconos = Adw.ActionRow(title="Usar iconos alternativos de GNOME", subtitle="Usa iconos del kit de desarrollo de GNOME en lugar de los del sistema")
+    sw_iconos = Gtk.Switch(active=getattr(win, '_usar_idk', True), valign=Gtk.Align.CENTER)
+
+    def _toggle_iconos(sw, ps):
+        win._usar_idk = sw.get_active()
+        establecer_iconos_idk(win._usar_idk)
+        win.toast_overlay.add_toast(Adw.Toast.new(
+            "Iconos alternativos: ACTIVADO" if win._usar_idk else "Iconos del sistema: ACTIVADO"
+        ))
+
+    sw_iconos.connect("notify::active", _toggle_iconos)
+    fila_iconos.add_suffix(sw_iconos)
+    grupo_iconos.add(fila_iconos)
+    pref_page.add(grupo_iconos)
 
     header = Adw.HeaderBar()
 

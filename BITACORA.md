@@ -45,5 +45,11 @@ Crear build AppImage, mejorar verificador de herramientas al inicio, centrar chi
 - `permissions: contents: write` necesario para crear releases
 - Primer release exitoso: `v0.7.0` 🎉
 
+### v0.7.1
+- `data/icons/Adwaita/` — Bundle completo de 44 iconos desde `icon-development-kit`
+- `utils/iconos.py` — Módulo centralizado con constantes + `establecer_iconos_idk()`
+- Toggle en Controles para elegir entre iconos del IDK o del sistema
+- Reemplazados iconos no estándar (`org.gnome.Settings-*`)
+
 ### Pendiente
 - (ninguno por ahora)

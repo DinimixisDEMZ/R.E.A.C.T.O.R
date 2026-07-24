@@ -174,7 +174,7 @@ class VentanaSimple(Adw.ApplicationWindow):
 
         self.agregar_opcion(self.lista_nav, "Controles", "preferences-system-symbolic", self.pag_controles)
         self.agregar_opcion(self.lista_nav, "Rendimiento", "power-profile-performance-symbolic", self.pag_rendimiento)
-        self.agregar_opcion(self.lista_nav, "Automatización", "org.gnome.Settings-network-proxy-symbolic", self.pag_automatizacion)
+        self.agregar_opcion(self.lista_nav, "Automatización", "network-server-symbolic", self.pag_automatizacion)
         self.nav_disponibilidad = self.agregar_opcion(self.lista_nav, "Disponibilidad", "dialog-information-symbolic", self.pag_disponibilidad)
         self.agregar_opcion(self.lista_nav, "Diagnóstico", "sonar-symbolic", self.pag_diagnostico)
         self.agregar_opcion(self.lista_nav, "Historial", "document-open-recent-symbolic", self.pag_historial)
@@ -224,7 +224,7 @@ class VentanaSimple(Adw.ApplicationWindow):
         """Muestra el diálogo Acerca De."""
         dialogo = Adw.AboutDialog(
             application_name="R.E.A.C.T.O.R",
-            version="0.7.0",
+            version="0.7.1",
             comments=f"{VentanaSimple.REACTOR}\nHerramienta de gestión y benchmarking para schedulers sched-ext (SCX).",
             developer_name="Equipo de Desarrollo R.E.A.C.T.O.R",
             developers=[
@@ -238,7 +238,7 @@ class VentanaSimple(Adw.ApplicationWindow):
             ],
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='application-x-firmware',
-            release_notes="""<p>Novedades en la versión 0.7.0:</p>
+            release_notes="""<p>Novedades en la versión 0.7.1:</p>
 <ul>
   <li>Motor de Detección Automática: Análisis completo de 6 pruebas por scheduler con umbral térmico, limpieza nuclear entre switches y aplicación automática del ganador.</li>
   <li>Gráfico de Hardware Cairo: Radar chart animado con 6 ejes (CPUs, Threads, GHz, L3, L2, Cores), pulso animado y fallback a barras.</li>

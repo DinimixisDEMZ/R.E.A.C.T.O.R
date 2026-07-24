@@ -1,6 +1,6 @@
 """
 REACTOR - Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)
-Versión 0.7.0 | © 2026 UNHARMET
+Versión 0.7.1 | © 2026 UNHARMET
 
 Entry Point: Verificación de dependencias y arranque de la aplicación.
 """
@@ -90,7 +90,15 @@ def main():
     class MiApp(Adw.Application):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
-            self.connect("activate", lambda a: VentanaSimple(a).present())
+            self.connect("activate", self._on_activate)
+
+        def _on_activate(self, app):
+            from utils.iconos import registrar_ruta_iconos, establecer_iconos_idk
+            registrar_ruta_iconos()
+            establecer_iconos_idk(True)
+            win = VentanaSimple(app)
+            win._usar_idk = True
+            win.present()
 
     app = MiApp(application_id="com.dinimixis.reactor")
     return app.run(sys.argv)

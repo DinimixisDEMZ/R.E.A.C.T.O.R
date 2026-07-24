@@ -142,7 +142,7 @@ def setup_rendimiento_ui(win):
     header.pack_start(sep_sn)
 
     for icon, tipo, tool in [
-        ("org.gnome.Settings-accessibility-pointing-symbolic", "cpu", "Context Switching"),
+        ("input-mouse-symbolic", "cpu", "Context Switching"),
         ("system-run-symbolic", "threads", "Carga Mixta"),
         ("network-server-symbolic", "memory", "Sincronización")
     ]:

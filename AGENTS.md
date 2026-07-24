@@ -36,6 +36,18 @@ Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización 
 - **Eventos sched_ext** desde sysfs sin root
 - **Iconos Adwaita verificados** y duplicados eliminados
 - **InLineViewSwitcher** en Historial y Diagnóstico (navegación tipo pestañas)
+- **Sistema de iconos portátil**: 
+  - `utils/iconos.py` — constantes centralizadas para todos los 42 iconos + `registrar_ruta_iconos()`
+  - `data/icons/scalable/{actions,status,devices,places,categories,mimetypes,legacy}/` — 43 SVGs (42 simbólicos + 1 fullcolor) de respaldo
+  - 13 SVGs desde `icon-development-kit` (GNOME), 27 desde Adwaita del sistema, 2 desde hicolor/MoreWaita
+  - `data/icons/reactor.gresource` — GResource compilado con todos los SVGs
+  - Registro vía `Gio.Resource.load()` + `Gio.resources_register()` + `Gtk.IconTheme.add_resource_path()` en `utils/iconos.py`
+  - Los iconos bundleados tienen prioridad sobre los del sistema (resource path > icon theme)
+  - Reemplazados iconos `org.gnome.Settings-*` (no estándar) por equivalentes Adwaita:
+    - `app.py:177` → `network-server-symbolic`
+    - `rendimiento.py:145` → `input-mouse-symbolic`
+    - `automatizacion.py:119` → `application-x-executable-symbolic`
+    - `automatizacion.py:138,1049` → `applications-engineering-symbolic`
 
 ### Active
 - Ninguno
@@ -63,3 +75,6 @@ Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización 
   - `scxtop.py` — terminal embebido scxtop
 - `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/widgets/radar.py` — RadarChart compartido
 - `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/utils/helpers.py` — parse_lscpu_*, make_lscpu_finder, generar_color_hash, obtener_color_tema
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/utils/iconos.py` — constantes de iconos portátiles + `registrar_ruta_iconos()`
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/data/icons/scalable/` — 43 SVGs de iconos bundleados (IDK + Adwaita)
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/data/icons/reactor.gresource` — GResource compilado

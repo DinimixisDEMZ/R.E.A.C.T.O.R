@@ -116,7 +116,7 @@ def setup_automatizacion_ui(win):
     win._auto_expander = Adw.ExpanderRow(
         title="Planificadores a analizar",
         subtitle="",
-        icon_name="org.gnome.Settings-applications-symbolic",
+        icon_name="application-x-executable-symbolic",
         expanded=False
     )
 
@@ -135,7 +135,7 @@ def setup_automatizacion_ui(win):
     grupo_auto.add(win._auto_expander)
 
     win.grupo_ganador = Adw.PreferencesGroup(title="Resultado del Diagnóstico")
-    win.fila_ganador = Adw.ExpanderRow(title="Motor en reposo", subtitle="Esperando al escaneo...", icon_name="org.gnome.Settings-device-diagnostics-symbolic")
+    win.fila_ganador = Adw.ExpanderRow(title="Motor en reposo", subtitle="Esperando al escaneo...", icon_name="applications-engineering-symbolic")
     win.box_resultados = Gtk.Box(spacing=12, valign=Gtk.Align.CENTER)
     win.fila_ganador.add_suffix(win.box_resultados)
     win._filas_ranking = []
@@ -1046,7 +1046,7 @@ def finalizar_auto_test(win, winner):
     else:
         win.fila_ganador.set_title("Motor en reposo")
         win.fila_ganador.set_subtitle("Análisis interrumpido por el usuario.")
-        win.fila_ganador.set_icon_name("org.gnome.Settings-device-diagnostics-symbolic")
+        win.fila_ganador.set_icon_name("applications-engineering-symbolic")
 
 
 def limpiar_ranking_auto(win, btn):
