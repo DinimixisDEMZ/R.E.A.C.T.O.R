@@ -22,13 +22,11 @@ def registrar_ruta_iconos():
 def establecer_iconos_idk(usar_idk):
     tema = Gtk.IconTheme.get_for_display(_display())
     paths = list(tema.get_search_path())
+    paths = [p for p in paths if p != DIR_ICONOS]
     if usar_idk:
-        if DIR_ICONOS not in paths:
-            tema.set_search_path([DIR_ICONOS] + paths)
+        tema.set_search_path([DIR_ICONOS] + paths)
     else:
-        if DIR_ICONOS in paths:
-            paths.remove(DIR_ICONOS)
-            tema.set_search_path(paths)
+        tema.set_search_path(paths + [DIR_ICONOS])
 
 
 # ── Sidebar ──

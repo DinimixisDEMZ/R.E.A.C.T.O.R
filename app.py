@@ -224,7 +224,7 @@ class VentanaSimple(Adw.ApplicationWindow):
         """Muestra el diálogo Acerca De."""
         dialogo = Adw.AboutDialog(
             application_name="R.E.A.C.T.O.R",
-            version="0.7.4",
+            version="0.7.5",
             comments=f"{VentanaSimple.REACTOR}\nHerramienta de gestión y benchmarking para schedulers sched-ext (SCX).",
             developer_name="Equipo de Desarrollo R.E.A.C.T.O.R",
             developers=[
@@ -237,13 +237,13 @@ class VentanaSimple(Adw.ApplicationWindow):
                 "Gekko (Designer)",
             ],
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
-            application_icon='application-x-firmware',
-            release_notes="""<p>Novedades en la versión 0.7.4:</p>
+            application_icon='reactor',
+            release_notes="""<p>Novedades en la versión 0.7.5:</p>
 <ul>
-  <li>Iconos renovados: ahora con iconos propios de GNOME para mejor apariencia en cualquier escritorio.</li>
-  <li>Nuevo interruptor en Controles para elegir entre los iconos alternativos y los del sistema.</li>
-  <li>Compatibilidad mejorada en distribuciones sin el tema de iconos completo.</li>
-  <li>Correcciones menores de interfaz y centrado de elementos.</li>
+  <li>Icono de aplicación propio en el diálogo Acerca de.</li>
+  <li>Modo sistema con fallback automático a los iconos alternativos cuando faltan.</li>
+  <li>Iconos de navegación renovados (atrás/adelante).</li>
+  <li>Correcciones menores de interfaz.</li>
 </ul>"""
         )
 
