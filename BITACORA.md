@@ -45,6 +45,9 @@ Crear build AppImage, mejorar verificador de herramientas al inicio, centrar chi
 - `permissions: contents: write` necesario para crear releases
 - Primer release exitoso: `v0.7.0` 🎉
 
+### v0.7.4
+- Centrados chips de resumen en tendencia
+
 ### v0.7.3
 - Incluido `data/` en build script del AppImage para empaquetar iconos del IDK
 - Version bump a 0.7.3
