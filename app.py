@@ -240,21 +240,11 @@ class VentanaSimple(Adw.ApplicationWindow):
             application_icon='application-x-firmware',
             release_notes="""<p>Novedades en la versión 0.7.4:</p>
 <ul>
-  <li>Motor de Detección Automática: Análisis completo de 6 pruebas por scheduler con umbral térmico, limpieza nuclear entre switches y aplicación automática del ganador.</li>
-  <li>Gráfico de Hardware Cairo: Radar chart animado con 6 ejes (CPUs, Threads, GHz, L3, L2, Cores), pulso animado y fallback a barras.</li>
-  <li>Panel de Diagnóstico en Tiempo Real: Uso de CPU por core, métricas de planificación (ctxt/s, procesos bloqueados), especificaciones avanzadas de CPU (lscpu -J), mitigaciones de seguridad.</li>
-  <li>Motor de Scoring con Media Armónica: Puntuación ponderada que penaliza valleys de rendimiento, con pesos configurables (Potencia/Respuesta/Fluidez).</li>
-  <li>Persistencia SQLite: Historial de benchmarks con filtros por scheduler, tipo de prueba y rango de fechas, gráfico de tendencia interactivo.</li>
-  <li>Monitoreo Térmico: Sensor discovery automático, calibración, alertas por niveles (estable/elevado/crítico) en sidebar.</li>
-</ul>
-<p>Novedades en la versión 0.6.4:</p>
-<ul>
-  <li>Segundo Motor de Benchmarking: Integración de hyperfine con 3 nuevas pruebas: Fork+Exec latency (100 runs), compilación paralela, interactividad bajo carga.</li>
-  <li>Pestaña de Disponibilidad: Verificación de compatibilidad BPF de cada scheduler con timeout, clasificación de resultados (Verificado/Residente/Error).</li>
-  <li>Gráfico Radar Comparativo: Spider chart Cairo de 6 categorías con polígonos animados, hover interactivo, leyenda clickeable para ocultar schedulers.</li>
-  <li>Pestaña de Historial: Tabla de resultados con filtros, gráfico de tendencia con hover tooltip, leyenda coloreada.</li>
-  <li>Autenticación Sudo: Diálogo modal para contraseña con validación en tiempo real.</li>
-  <li>Modo Desarrollador: Simulación completa de datos para testing de UI sin hardware.</li>
+  <li>Sistema de iconos portátil: 44 SVGs bundleados desde icon-development-kit de GNOME con toggle sistema/IDK en Controles.</li>
+  <li>Eliminado logo de distribución en Entorno (no visible en varias distros).</li>
+  <li>Chips de resumen centrados en Tendencia.</li>
+  <li>Actualizadas actions de CI a Node.js 24.</li>
+  <li>Incluido data/ en build del AppImage para empaquetar iconos.</li>
 </ul>"""
         )
 
