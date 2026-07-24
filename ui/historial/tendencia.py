@@ -88,7 +88,7 @@ def _crear_pagina_tendencia(win):
     grupo.add(filtro_test_fila)
 
     # ── Resumen arriba del gráfico ──
-    win._hist_trend_summary_box = Gtk.Box(spacing=8, margin_top=6, margin_bottom=4)
+    win._hist_trend_summary_box = Gtk.Box(spacing=8, margin_top=6, margin_bottom=4, halign=Gtk.Align.CENTER)
     grupo.add(win._hist_trend_summary_box)
 
     caja_visual = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=6, margin_bottom=6)
