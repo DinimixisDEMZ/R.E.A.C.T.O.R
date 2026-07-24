@@ -17,11 +17,9 @@ def _crear_pagina_entorno(win):
     pagina = Adw.PreferencesPage()
     versiones = getattr(win, 'versiones', {})
 
-    id_distro = ""
     try:
         release_so = _platform.freedesktop_os_release()
         nombre_distro = release_so.get("PRETTY_NAME", release_so.get("NAME", _platform.system()))
-        id_distro = release_so.get("ID", "").lower()
     except Exception:
         nombre_distro = _platform.system()
     arquitectura = _platform.machine()
@@ -39,16 +37,6 @@ def _crear_pagina_entorno(win):
         pass
 
     kernel = versiones.get("kernel", "—")
-
-    # ── Logo grande ──
-    grupo_logo = Adw.PreferencesGroup()
-    caja_logo = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0, halign=Gtk.Align.CENTER, margin_top=12, margin_bottom=4)
-    icono_logo = f"distributor-logo-{id_distro}" if id_distro else "start-here-symbolic"
-    logo = Gtk.Image(icon_name=icono_logo, pixel_size=190)
-    logo.set_valign(Gtk.Align.CENTER)
-    caja_logo.append(logo)
-    grupo_logo.add(caja_logo)
-    pagina.add(grupo_logo)
 
     # ── Chips informativos con tooltip ──
     grupo_chips = Adw.PreferencesGroup()
