@@ -240,11 +240,10 @@ class VentanaSimple(Adw.ApplicationWindow):
             application_icon='application-x-firmware',
             release_notes="""<p>Novedades en la versión 0.7.4:</p>
 <ul>
-  <li>Sistema de iconos portátil: 44 SVGs bundleados desde icon-development-kit de GNOME con toggle sistema/IDK en Controles.</li>
-  <li>Eliminado logo de distribución en Entorno (no visible en varias distros).</li>
-  <li>Chips de resumen centrados en Tendencia.</li>
-  <li>Actualizadas actions de CI a Node.js 24.</li>
-  <li>Incluido data/ en build del AppImage para empaquetar iconos.</li>
+  <li>Iconos renovados: ahora con iconos propios de GNOME para mejor apariencia en cualquier escritorio.</li>
+  <li>Nuevo interruptor en Controles para elegir entre los iconos alternativos y los del sistema.</li>
+  <li>Compatibilidad mejorada en distribuciones sin el tema de iconos completo.</li>
+  <li>Correcciones menores de interfaz y centrado de elementos.</li>
 </ul>"""
         )
 
