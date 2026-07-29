@@ -12,7 +12,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
-from utils.helpers import generar_color_hash
+from utils.colores import generar_color_hash
 from core.constantes import INTERVALO_FRAME_MS
 
 
@@ -193,7 +193,7 @@ def _dibujar_tendencia(area, cr, w, h, win):
     if datos and prog_anim >= 1.0:
         pos_tooltip = hover or getattr(win, "_hist_chart_last_hover", None)
         if pos_tooltip:
-            _dibujar_tooltip(cr, win, datos, tx, ty, w, margen, es_oscuro, pos_tooltip, alfa_hover)
+            _dibujar_tooltip(cr, win, datos, tx, ty, w, alto_trazo, margen, es_oscuro, pos_tooltip, alfa_hover)
 
 
 def _dibujar_lineas_tendencia(cr, win, datos, tx, ty, alfa, es_oscuro, planif_hover=None, margen=None, alto_trazo=0):
@@ -282,7 +282,7 @@ def _dibujar_lineas_tendencia(cr, win, datos, tx, ty, alfa, es_oscuro, planif_ho
             cr.stroke()
 
 
-def _dibujar_tooltip(cr, win, datos, tx, ty, w, margen, es_oscuro, hover, alfa_hover=1.0):
+def _dibujar_tooltip(cr, win, datos, tx, ty, w, alto_trazo, margen, es_oscuro, hover, alfa_hover=1.0):
     hx, hy = hover
     if not (margen[0] <= hx <= w - margen[2]):
         return
@@ -313,7 +313,7 @@ def _dibujar_tooltip(cr, win, datos, tx, ty, w, margen, es_oscuro, hover, alfa_h
     cr.set_source_rgba(0.6, 0.6, 0.6, (0.4 if es_oscuro else 0.3) * alfa_hover)
     cr.set_dash([3, 3], 0)
     cr.move_to(snap_x, margen[1])
-    cr.line_to(snap_x, margen[1] + (w - margen[0] - margen[2]))
+    cr.line_to(snap_x, margen[1] + alto_trazo)
     cr.stroke()
     cr.set_dash([], 0)
 
@@ -356,8 +356,8 @@ def _dibujar_tooltip(cr, win, datos, tx, ty, w, margen, es_oscuro, hover, alfa_h
     y2_tooltip = margen[1] + 10
     if x2_tooltip + ancho_tooltip > w - margen[2]:
         x2_tooltip = snap_x - ancho_tooltip - 14
-    if y2_tooltip + alto_tooltip > margen[1] + (w - margen[0] - margen[2]):
-        y2_tooltip = margen[1] + (w - margen[0] - margen[2]) - alto_tooltip - 10
+    if y2_tooltip + alto_tooltip > margen[1] + alto_trazo:
+        y2_tooltip = margen[1] + alto_trazo - alto_tooltip - 10
 
     # ── Fondo del tooltip ──
     radio_r = 8

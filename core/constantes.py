@@ -2,7 +2,7 @@
 Constantes compartidas del proyecto R.E.A.C.T.O.R.
 """
 
-VERSION = "1.2"
+VERSION = "0.8"
 
 # Temperatura (°C)
 TEMP_UMBRAL_ESTABLE = 60

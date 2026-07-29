@@ -18,6 +18,8 @@ Ventana principal de REACTOR.
 Orquesta los módulos de UI, core y widgets.
 """
 
+import subprocess
+
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -25,7 +27,6 @@ from gi.repository import Gtk, Adw, GLib, Gdk
 
 from core.scx import GestorScx
 from core.thermal import SensorTermico
-from utils.helpers import RE_RUNNING
 from ui.grafico import GraficoComparativo
 from ui.controles import configurar_ui_controles
 from ui.rendimiento import configurar_ui_rendimiento, actualizar_interfaz_ranking
@@ -97,8 +98,7 @@ class VentanaSimple(Adw.ApplicationWindow):
         configurar_ui_disponibilidad(self)
         self.pag_historial = Adw.NavigationPage(title=traducir("Historial"), tag="page_f")
         configurar_ui_historial(self)
-        # Diagnóstico
-        configurar_ui_diagnostico(self)
+        self.pag_diagnostico = configurar_ui_diagnostico(self)
 
 
         # ── CSS personalizado ──
@@ -221,8 +221,17 @@ class VentanaSimple(Adw.ApplicationWindow):
 
     def actualizar_sensor_termico(self):
         """Actualiza el indicador térmico en la sidebar."""
-        t = self.sensor.obtener_temp()
+        try:
+            t = self.sensor.obtener_temp()
+        except Exception:
+            self.lbl_termica_detail.set_label(traducir("Estado: No disponible"))
+            self.img_termica.set_from_icon_name("temperature-symbolic")
+            self.img_termica.add_css_class("dim-label")
+            return True
         if t == 0:
+            self.lbl_termica_detail.set_label(traducir("Estado: No disponible"))
+            self.img_termica.set_from_icon_name("temperature-symbolic")
+            self.img_termica.add_css_class("dim-label")
             return True
 
         if t < TEMP_UMBRAL_ESTABLE:
@@ -257,34 +266,17 @@ class VentanaSimple(Adw.ApplicationWindow):
             developer_name=traducir("DinimixisDEMZ"),
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='reactor',
-            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.2 — ¡Iconos portátiles y más!</p>
-<ul>
-  <li>Iconos empaquetados en GResource: se ven en cualquier distribución sin depender del tema del sistema.</li>
-  <li>Botones de benchmark movidos a cada fila individual — más claro y directo.</li>
-  <li>Acerca de renovado: secciones limpias sin paréntesis, créditos reorganizados.</li>
-  <li>Logs guardados en base de datos: al navegar el historial se restaura el registro completo.</li>
-  <li>Verificación del sistema: soporte para run0 (systemd ≥256), detección de rt-tests en PATH.</li>
-  <li>AppImage autónomo: incluye stress-ng, hyperfine, rt-tests source — sin dependencias externas.</li>
-  <li>Gráfico radar con animación de pulso más suave.</li>
-</ul>
-<p>R.E.A.C.T.O.R 1.1 — Internacionalización.</p>
-<ul>
-  <li>Idioma: ahora podés usar la app en español, inglés, francés, alemán, italiano o portugués.</li>
-  <li>Info pruebas: tocar ℹ️ al lado de cada grupo de tests explica qué mide y cómo interpretarlo.</li>
-  <li>Iconos renovados para los modos preestablecidos (Potencia, Respuesta, Fluidez).</li>
-  <li>Selector de idioma en Controles: desactivá "Usar idioma del sistema" para elegir otro.</li>
-  <li>Gráfico radar más limpio y fácil de leer.</li>
-</ul>
-<p>R.E.A.C.T.O.R 1.0 — Primera versión estable.</p>
-<ul>
-  <li>Benchmarks manuales con stress-ng e hyperfine.</li>
-  <li>Detección automática del mejor planificador para tu sistema.</li>
-  <li>Monitor en vivo: CPU, memoria, temperatura, eventos sched_ext.</li>
-  <li>Historial de resultados con gráficos de tendencia y tabla comparativa.</li>
-  <li>Verificación de compatibilidad BPF para cada planificador.</li>
-  <li>Terminal scxtop integrada para monitoreo avanzado.</li>
-  <li>Radar comparativo con pesos ajustables (Potencia/Respuesta/Fluidez).</li>
-</ul>""")
+            release_notes=traducir("""R.E.A.C.T.O.R 0.8 — Refactorización y estabilidad.
+• Refactorización completa del código: split de automatización, tests, constantes, dataclasses de estado.
+• Aplanado de historial git: todos los cambios post-v0.7.5 consolidados en un solo commit.
+• Sistema de iconos portátil con GResource — funcionan en cualquier distribución.
+• Internacionalización (i18n): español, inglés, francés, alemán, italiano, portugués.
+• 49 tests automatizados cubriendo scoring, benchmark, database y thermal.
+• Botones de benchmark por fila individual, gráfico radar con pulso animado.
+• AppImage autónomo con stress-ng, hyperfine y rt-tests incluidos.
+• Verificación del sistema con soporte run0 (systemd ≥256).
+• Terminal scxtop integrada para monitoreo avanzado.
+• Radar comparativo con pesos ajustables (Potencia/Respuesta/Fluidez).""")
         )
 
         dialogo.add_credit_section(traducir("Desarrollo y Diseño"), [
@@ -315,39 +307,41 @@ class VentanaSimple(Adw.ApplicationWindow):
         ])
         dialogo.present(self)
 
+    def _sincronizar_modelo(self, sc_name, sc_mode):
+        sc_corto = sc_name.removeprefix("scx_") if sc_name else None
+        lista_nombres = self.scx.obtener_lista()
+        if sc_corto and sc_corto not in lista_nombres:
+            lista_nombres.append(sc_corto)
+        self.modelo_schedulers.splice(0, self.modelo_schedulers.get_n_items(), lista_nombres)
+        return sc_corto, lista_nombres
+
+    def _actualizar_ui_scheduler(self, sc_name, sc_mode, sc_corto, lista_nombres):
+        self.boton_estado.remove_css_class("success")
+        self.boton_estado.remove_css_class("destructive-action")
+        if sc_name:
+            self.boton_estado.set_label(f"{sc_name} [{sc_mode}]")
+            self.boton_estado.add_css_class("success")
+            self.active_sc = sc_name
+            for i, nombre in enumerate(lista_nombres):
+                if nombre.lower() == sc_corto.lower():
+                    self.combo_schedulers.set_selected(i)
+                    break
+            model_modos = self.combo_modos.get_model()
+            for i in range(model_modos.get_n_items()):
+                if model_modos.get_string(i).lower() == sc_mode.lower():
+                    self.combo_modos.set_selected(i)
+                    break
+        else:
+            self.boton_estado.set_label(traducir("Planificador del Sistema"))
+            self.boton_estado.add_css_class("destructive-action")
+            self.active_sc = None
+
     def sincronizar_sistema(self):
-        """Sincroniza el estado de la UI con el sistema real."""
         try:
             self.en_sincronizacion = True
-
             sc_name, sc_mode = self.scx.obtener_estado()
-            sc_corto = sc_name.removeprefix("scx_") if sc_name else None
-
-            lista_nombres = self.scx.obtener_lista()
-            if sc_corto and sc_corto not in lista_nombres:
-                lista_nombres.append(sc_corto)
-
-            self.modelo_schedulers.splice(0, self.modelo_schedulers.get_n_items(), lista_nombres)
-
-            self.boton_estado.remove_css_class("success")
-            self.boton_estado.remove_css_class("destructive-action")
-            if sc_name:
-                self.boton_estado.set_label(f"{sc_name} [{sc_mode}]")
-                self.boton_estado.add_css_class("success")
-                self.active_sc = sc_name
-                for i, nombre in enumerate(lista_nombres):
-                    if nombre.lower() == sc_corto.lower():
-                        self.combo_schedulers.set_selected(i)
-                        break
-                model_modos = self.combo_modos.get_model()
-                for i in range(model_modos.get_n_items()):
-                    if model_modos.get_string(i).lower() == sc_mode.lower():
-                        self.combo_modos.set_selected(i)
-                        break
-            else:
-                self.boton_estado.set_label(traducir("Planificador del Sistema"))
-                self.boton_estado.add_css_class("destructive-action")
-                self.active_sc = None
+            sc_corto, lista_nombres = self._sincronizar_modelo(sc_name, sc_mode)
+            self._actualizar_ui_scheduler(sc_name, sc_mode, sc_corto, lista_nombres)
             self.en_sincronizacion = False
             actualizar_interfaz_ranking(self)
         except FileNotFoundError:

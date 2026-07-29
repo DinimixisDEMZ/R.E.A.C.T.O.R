@@ -1,70 +1,115 @@
 """
-Widget de leyenda interactiva para la gráfica de detección.
-Chips clickeables que permiten ocultar/mostrar schedulers.
+Widgets de leyenda interactiva.
+Chips cliqueables con dot coloreado para ocultar/mostrar series.
 """
-
-import math
 
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Gdk
 
-from utils.i18n import traducir
+from utils.colores import dibujar_dot
+from utils.helpers import vaciar_contenedor
 
 
-def crear_chip_leyenda(nombre, grafico, box_leyenda):
-    """Crea un chip de leyenda interactivo para un scheduler.
-    
+def crear_chip_leyenda(
+    nombre, color_func=None, on_toggle=None,
+    tooltip_text=None, dot_radius=3.5, dot_size=12,
+    opacity_visible=1.0, opacity_hidden=0.4,
+    grafico=None, ocultos_set=None, box_leyenda=None
+):
+    """Crea un chip de leyenda interactivo.
+
     Args:
-        nombre: Nombre del scheduler
-        grafico: Instancia de GraficoComparativo
-        box_leyenda: Contenedor WrapBox donde añadir el chip
+        nombre: Texto del label
+        color_func: Callable(nombre) -> (r, g, b) o None para gris
+        on_toggle: Callable(nombre, visible) al clickear
+        tooltip_text: Texto de tooltip multilínea
+        dot_radius: Radio del círculo coloreado
+        dot_size: Tamaño del DrawingArea del dot
+        opacity_visible: Opacidad cuando visible
+        opacity_hidden: Opacidad cuando oculto
+        grafico: Si se pasa, conecta toggle a grafico.ocultos + queue_draw
+        ocultos_set: Set alternativo para toggle (reemplaza grafico.ocultos)
+        box_leyenda: Si se pasa, agrega el chip al contenedor
     """
-    r, g, b = grafico.colores.get(nombre.lower(), (0.5, 0.5, 0.5))
+    if color_func:
+        r, g, b = color_func(nombre)
+    elif grafico:
+        r, g, b = grafico.colores.get(nombre.lower(), (0.5, 0.5, 0.5))
+    else:
+        r, g, b = (0.5, 0.5, 0.5)
 
     chip = Gtk.Box(spacing=10, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
     chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+    if tooltip_text:
+        chip.set_has_tooltip(True)
+        chip.set_tooltip_text(tooltip_text)
 
-    # Indicador de color
     dot = Gtk.DrawingArea()
-    dot.set_content_width(12)
-    dot.set_content_height(12)
+    dot.set_content_width(dot_size)
+    dot.set_content_height(dot_size)
     dot.set_valign(Gtk.Align.CENTER)
     dot.set_margin_start(8)
-    dot.set_draw_func(lambda a, cr, w, h, x: (
-        cr.set_source_rgb(r, g, b),
-        cr.arc(w / 2, h / 2, 5, 0, 2 * math.pi),
-        cr.fill(),
-        cr.set_source_rgba(1, 1, 1, 0.2),
-        cr.arc(w / 2, h / 2, 5, 0, 2 * math.pi),
-        cr.set_line_width(1),
-        cr.stroke()
-    ), None)
+    dot.set_draw_func(lambda a, cr, w, h, rr=r, gg=g, bb=b, rd=dot_radius:
+                      dibujar_dot(cr, w, h, rr, gg, bb, rd))
 
-    label = Gtk.Label(label=traducir(nombre))
+    label = Gtk.Label(label=nombre, css_classes=["caption-heading"])
     label.set_margin_end(10)
     label.set_margin_top(4)
     label.set_margin_bottom(4)
-    label.add_css_class("caption-heading")
 
     chip.append(dot)
     chip.append(label)
 
-    # Toggle de visibilidad al clickear
-    def al_clickear(gesture, n_press, x, y, name):
-        if name in grafico.ocultos:
-            grafico.ocultos.remove(name)
-            chip.set_opacity(1.0)
-            dot.set_opacity(1.0)
+    def _toggle_set(s, ocultos):
+        if s in ocultos:
+            ocultos.discard(s)
+            chip.set_opacity(opacity_visible)
+            dot.set_opacity(opacity_visible)
         else:
-            grafico.ocultos.add(name)
-            chip.set_opacity(0.4)
-            dot.set_opacity(0.3)
-        grafico.queue_draw()
+            ocultos.add(s)
+            chip.set_opacity(opacity_hidden)
+            dot.set_opacity(opacity_hidden)
+
+    def al_clickear(gesture, n_press, x, y):
+        if ocultos_set is not None:
+            _toggle_set(nombre, ocultos_set)
+            if on_toggle:
+                on_toggle(nombre, nombre not in ocultos_set)
+        elif grafico is not None:
+            _toggle_set(nombre, grafico.ocultos)
+            grafico.queue_draw()
+            if on_toggle:
+                on_toggle(nombre, nombre not in grafico.ocultos)
+        elif on_toggle:
+            on_toggle(nombre, True)
 
     click = Gtk.GestureClick()
-    click.connect("pressed", al_clickear, nombre)
+    click.connect("pressed", al_clickear)
     chip.add_controller(click)
 
-    box_leyenda.append(chip)
+    if box_leyenda is not None:
+        box_leyenda.append(chip)
+
+    return chip
+
+
+def crear_chip_informativo(icon, texto, tooltip=None):
+    """Crea un chip informativo no interactivo (icono + texto)."""
+    card = Gtk.Box(spacing=4, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
+    card.set_margin_top(2)
+    card.set_margin_bottom(2)
+    img = Gtk.Image(icon_name=icon, pixel_size=12)
+    img.set_valign(Gtk.Align.CENTER)
+    img.set_margin_start(8)
+    card.append(img)
+    lbl = Gtk.Label(label=texto, css_classes=["caption-heading"])
+    lbl.set_margin_end(10)
+    lbl.set_margin_top(4)
+    lbl.set_margin_bottom(4)
+    card.append(lbl)
+    if tooltip:
+        card.set_has_tooltip(True)
+        card.set_tooltip_text(tooltip)
+    return card

@@ -28,6 +28,7 @@ jobs:
             libgtk-4-dev \
             libadwaita-1-dev \
             libvte-2.91-gtk4-dev \
+            build-essential libnuma-dev \
             wget squashfs-tools
 
       - name: Determinar versión
@@ -65,8 +66,8 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           NOTES="AppImage para R.E.A.C.T.O.R v${VERSION}
 
-          **Incluye:** stress-ng, hyperfine, rt-tests (source)
-          **Requiere en el sistema:** GTK 4, libadwaita, scxctl (con sudo/run0)"
+          **Incluye:** stress-ng (estático), hyperfine (estático), cyclictest (estático), rt-tests source
+          **Requiere en el sistema:** GTK 4, libadwaita, scxctl, make, gcc"
           gh release create "v$VERSION" \
             --title "R.E.A.C.T.O.R v$VERSION" \
             --notes "$NOTES" \

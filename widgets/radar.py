@@ -15,7 +15,7 @@ try:
 except ImportError:
     _HAS_CAIRO = False
 
-from utils.helpers import obtener_color_tema
+from utils.colores import obtener_color_tema
 
 _EJES = [
     ("CPUs",   32,    ""),

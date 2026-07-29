@@ -112,8 +112,5 @@ NOMBRES_IDIOMA = {
     "fr": "Français",
     "de": "Deutsch",
     "it": "Italiano",
-    "pt_BR": "Português (Brasil)",
-    "ca": "Català",
-    "eu": "Euskara",
-    "gl": "Galego",
+    "pt": "Português (Brasil)",
 }

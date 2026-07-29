@@ -12,8 +12,10 @@ from gi.repository import Gtk, Adw, GLib, Gdk, Gio, GObject
 
 from core.database import consultar_tendencia
 from core.constantes import INTERVALO_FRAME_MS
-from utils.helpers import generar_color_hash
+from utils.colores import generar_color_hash, dibujar_dot
+from utils.helpers import vaciar_contenedor
 from utils.i18n import traducir
+from widgets.legend import crear_chip_leyenda, crear_chip_informativo
 from .constantes import _TIPOS_PRUEBA, _RANGOS_FECHA
 
 
@@ -28,22 +30,6 @@ class _FilaTabla(GObject.GObject):
     maximo = GObject.Property(type=float, default=0.0)
     ultimo = GObject.Property(type=float, default=0.0)
     std = GObject.Property(type=float, default=0.0)
-
-
-def _crear_tarjeta_resumen(icon, texto):
-    card = Gtk.Box(spacing=4, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
-    card.set_margin_top(2)
-    card.set_margin_bottom(2)
-    img = Gtk.Image(icon_name=icon, pixel_size=12)
-    img.set_valign(Gtk.Align.CENTER)
-    img.set_margin_start(8)
-    card.append(img)
-    lbl = Gtk.Label(label=texto, css_classes=["caption-heading"])
-    lbl.set_margin_end(10)
-    lbl.set_margin_top(4)
-    lbl.set_margin_bottom(4)
-    card.append(lbl)
-    return card
 
 
 def _crear_funcion_comparar(attr):
@@ -134,20 +120,17 @@ def _crear_pagina_tendencia(win):
     return pagina
 
 
-def _refrescar_tendencia(win):
-    """Actualiza el gráfico de tendencia con el rango y tipo seleccionado."""
+def _obtener_datos_tendencia(win):
     indice = win._hist_trend_combo.get_selected()
     days, _ = _RANGOS_FECHA[indice]
     indice_prueba = win._hist_trend_test_type.get_selected()
     tipo_prueba, _ = _TIPOS_PRUEBA[indice_prueba]
-
     datos = consultar_tendencia(tipo_prueba, days=days if days > 0 else 365)
+    planificadores = {d["scheduler_name"] for d in datos}
+    return tipo_prueba, datos, planificadores
 
-    planificadores = set()
-    for d in datos:
-        planificadores.add(d["scheduler_name"])
 
-    # ── Animación: crossfade ──
+def _iniciar_animacion_crossfade(win, datos, planificadores):
     anterior = getattr(win, "_hist_chart_data", [])
     win._hist_chart_data = datos
     win._hist_chart_scheds = planificadores
@@ -158,254 +141,215 @@ def _refrescar_tendencia(win):
             GLib.source_remove(win._hist_chart_anim_timer)
         _tick_anim(win)
 
-    estadisticas = {}
+
+def _calcular_estadisticas(datos, planificadores):
+    est = {}
     for planif in planificadores:
         valores = [d["valor"] for d in datos if d["scheduler_name"] == planif]
         if valores:
-            estadisticas[planif] = {
+            est[planif] = {
                 "avg": sum(valores) / len(valores),
                 "min": min(valores),
                 "max": max(valores),
                 "last": valores[-1],
                 "count": len(valores),
             }
-    win._hist_chart_stats = estadisticas
+    return est
 
+
+def _construir_leyenda(win, planificadores, estadisticas):
     if not hasattr(win, "_hist_chart_ocultos"):
         win._hist_chart_ocultos = set()
     win._hist_chart_ocultos &= planificadores
 
-    while (c := win._hist_box_leyenda.get_first_child()):
-        win._hist_box_leyenda.remove(c)
+    vaciar_contenedor(win._hist_box_leyenda)
 
     for planif in sorted(planificadores):
-        r, g, b = generar_color_hash(planif)
         est = estadisticas.get(planif, {})
-        es_visible = planif not in win._hist_chart_ocultos
-        chip = Gtk.Box(spacing=10, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
-        chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
-        chip.set_has_tooltip(True)
-        chip.set_tooltip_text(
+        tooltip = (
             f"{traducir('Promedio')}: {est.get('avg', 0):,.1f}\n"
             f"{traducir('Mínimo')}:   {est.get('min', 0):,.1f}\n"
             f"{traducir('Máximo')}:   {est.get('max', 0):,.1f}\n"
             f"{traducir('Último')}:   {est.get('last', 0):,.1f}\n"
             f"{traducir('Tests')}:    {est.get('count', 0)}"
-        )
+        ) if est else None
 
-        punto = Gtk.DrawingArea()
-        punto.set_content_width(12)
-        punto.set_content_height(12)
-        punto.set_valign(Gtk.Align.CENTER)
-        punto.set_margin_start(8)
-        punto.set_draw_func(lambda a, cr, w, h, rr=r, gg=g, bb=b: (
-            cr.set_source_rgb(rr, gg, bb),
-            cr.arc(w / 2, h / 2, 5, 0, 2 * math.pi),
-            cr.fill(),
-            cr.set_source_rgba(1, 1, 1, 0.2),
-            cr.arc(w / 2, h / 2, 5, 0, 2 * math.pi),
-            cr.set_line_width(1),
-            cr.stroke()
-        ))
-        chip.append(punto)
-        lbl = Gtk.Label(label=planif, css_classes=["caption-heading"])
-        lbl.set_margin_end(10)
-        lbl.set_margin_top(4)
-        lbl.set_margin_bottom(4)
-        chip.append(lbl)
-
-        chip.set_opacity(1.0 if es_visible else 0.4)
-        punto.set_opacity(1.0 if es_visible else 0.4)
-
-        def _alternar(gesture, n, x, y, s=planif, ch=chip, d=punto):
-            if s in win._hist_chart_ocultos:
-                win._hist_chart_ocultos.discard(s)
-                ch.set_opacity(1.0)
-                d.set_opacity(1.0)
-            else:
-                win._hist_chart_ocultos.add(s)
-                ch.set_opacity(0.4)
-                d.set_opacity(0.4)
+        def _toggle(name, visible):
             win._hist_chart.queue_draw()
 
-        clic = Gtk.GestureClick()
-        clic.connect("pressed", _alternar)
-        chip.add_controller(clic)
-
-        win._hist_box_leyenda.append(chip)
-
+        crear_chip_leyenda(
+            planif, color_func=generar_color_hash,
+            on_toggle=_toggle, tooltip_text=tooltip,
+            grafico=getattr(win, "_hist_chart", None),
+            box_leyenda=win._hist_box_leyenda
+        )
     win._hist_chart.queue_draw()
 
-    # ── Resumen arriba del gráfico ──
-    while (c := win._hist_trend_summary_box.get_first_child()):
-        win._hist_trend_summary_box.remove(c)
+
+def _construir_resumen(win, datos, estadisticas, planificadores, tipo_prueba):
+    vaciar_contenedor(win._hist_trend_summary_box)
 
     total_pruebas = sum(s["count"] for s in estadisticas.values())
-    n_planificadores = len(planificadores)
+    n_planif = len(planificadores)
 
     if datos:
         ts_todos = [d["timestamp"] for d in datos]
         fecha_desde = datetime.fromtimestamp(min(ts_todos)).strftime("%d/%m")
         fecha_hasta = datetime.fromtimestamp(max(ts_todos)).strftime("%d/%m")
         rango_fechas = f"{fecha_desde} - {fecha_hasta}"
-
         es_latencia = "latencia" in tipo_prueba
-        planificadores_ordenados = sorted(estadisticas.items(), key=lambda x: x[1]["avg"])
-        if not es_latencia and tipo_prueba != "memory":
-            planificadores_ordenados.reverse()
-        mejor_planif = planificadores_ordenados[0][0] if planificadores_ordenados else "—"
-        peor_planif = planificadores_ordenados[-1][0] if planificadores_ordenados else "—"
+        ordenados = sorted(estadisticas.items(), key=lambda x: x[1]["avg"], reverse=not (es_latencia or tipo_prueba == "memory"))
+        mejor = ordenados[0][0] if ordenados else "—"
+        peor = ordenados[-1][0] if ordenados else "—"
     else:
         rango_fechas = "—"
-        mejor_planif = "—"
-        peor_planif = "—"
+        mejor = "—"
+        peor = "—"
 
     for icon, texto in [
         ("view-list-symbolic", f"{total_pruebas} {traducir('tests')}"),
-        ("system-run-symbolic", f"{n_planificadores} {traducir('planificadores')}"),
+        ("system-run-symbolic", f"{n_planif} {traducir('planificadores')}"),
         ("x-office-calendar-symbolic", rango_fechas),
-        ("starred-symbolic", f"{traducir('Mejor')}: {mejor_planif}"),
-        ("dialog-warning-symbolic", f"{traducir('Peor')}: {peor_planif}"),
+        ("starred-symbolic", f"{traducir('Mejor')}: {mejor}"),
+        ("dialog-warning-symbolic", f"{traducir('Peor')}: {peor}"),
     ]:
-        card = _crear_tarjeta_resumen(icon, texto)
-        win._hist_trend_summary_box.append(card)
+        win._hist_trend_summary_box.append(crear_chip_informativo(icon, texto))
 
-    # ── Tabla comparativa (ColumnView nativo) ──
+
+def _construir_tabla(win, datos, planificadores, estadisticas, tipo_prueba):
     pagina = getattr(win, "_hist_trend_page", None)
     for g in getattr(win, "_hist_trend_stat_groups", []):
         if pagina:
             pagina.remove(g)
     win._hist_trend_stat_groups = []
 
-    if datos and planificadores:
-        es_latencia = "latencia" in tipo_prueba
-        etiquetas = [traducir("Promedio"), traducir("Mínimo"), traducir("Máximo"), traducir("Último"), "σ"]
-        attrs = ["avg", "minimo", "maximo", "ultimo", "std"]
+    if not datos or not planificadores:
+        return
 
-        estadisticas_planif = {}
-        for planif in sorted(planificadores):
-            s = estadisticas.get(planif, {})
-            valores = [d["valor"] for d in datos if d["scheduler_name"] == planif]
-            r, g, b = generar_color_hash(planif)
-            estadisticas_planif[planif] = {
-                "avg": s.get("avg", 0), "min": s.get("min", 0),
-                "max": s.get("max", 0), "last": s.get("last", 0),
-                "std": _calcular_desv(valores) if len(valores) > 1 else 0,
-                "r": r, "g": g, "b": b,
-            }
+    es_latencia = "latencia" in tipo_prueba
+    etiquetas = [traducir("Promedio"), traducir("Mínimo"), traducir("Máximo"), traducir("Último"), "σ"]
+    attrs = ["avg", "minimo", "maximo", "ultimo", "std"]
 
-        # Modelo de datos
-        modelo = Gio.ListStore(item_type=_FilaTabla)
-        for planif in sorted(planificadores):
-            est = estadisticas_planif[planif]
-            modelo.append(_FilaTabla(
-                planif=planif, r=est["r"], g=est["g"], b=est["b"],
-                avg=est["avg"], minimo=est["min"], maximo=est["max"],
-                ultimo=est["last"], std=est["std"],
-            ))
+    planif_stats = {}
+    for planif in sorted(planificadores):
+        s = estadisticas.get(planif, {})
+        valores = [d["valor"] for d in datos if d["scheduler_name"] == planif]
+        r, g, b = generar_color_hash(planif)
+        planif_stats[planif] = {
+            "avg": s.get("avg", 0), "min": s.get("min", 0),
+            "max": s.get("max", 0), "last": s.get("last", 0),
+            "std": _calcular_desv(valores) if len(valores) > 1 else 0,
+            "r": r, "g": g, "b": b,
+        }
 
-        columna_vista = Gtk.ColumnView(show_row_separators=True)
-        columna_vista.set_show_column_separators(True)
+    modelo = Gio.ListStore(item_type=_FilaTabla)
+    for planif in sorted(planificadores):
+        est = planif_stats[planif]
+        modelo.append(_FilaTabla(
+            planif=planif, r=est["r"], g=est["g"], b=est["b"],
+            avg=est["avg"], minimo=est["min"], maximo=est["max"],
+            ultimo=est["last"], std=est["std"],
+        ))
 
-        sort_model = Gtk.SortListModel(model=modelo, sorter=columna_vista.get_sorter())
-        sel = Gtk.MultiSelection(model=sort_model)
-        columna_vista.set_model(sel)
+    columna_vista = Gtk.ColumnView(show_row_separators=True)
+    columna_vista.set_show_column_separators(True)
+    sort_model = Gtk.SortListModel(model=modelo, sorter=columna_vista.get_sorter())
+    columna_vista.set_model(Gtk.MultiSelection(model=sort_model))
 
-        # ── Columna: Planificador (sin ordenamiento) ──
-        fab_nombre = Gtk.SignalListItemFactory()
+    # Columna: Planificador
+    fab_nombre = Gtk.SignalListItemFactory()
+    def _on_setup_nombre(f, li):
+        box = Gtk.Box(spacing=6)
+        dot = Gtk.DrawingArea()
+        dot.set_content_width(8)
+        dot.set_content_height(8)
+        dot.set_valign(Gtk.Align.CENTER)
+        lbl = Gtk.Label(halign=Gtk.Align.START, css_classes=["caption-heading"])
+        box.append(dot)
+        box.append(lbl)
+        li.set_child(box)
 
-        def _on_setup_nombre(f, li):
-            box = Gtk.Box(spacing=6)
-            dot = Gtk.DrawingArea()
-            dot.set_content_width(8)
-            dot.set_content_height(8)
-            dot.set_valign(Gtk.Align.CENTER)
-            lbl = Gtk.Label(halign=Gtk.Align.START, css_classes=["caption-heading"])
-            box.append(dot)
+    def _on_bind_nombre(f, li):
+        item = li.get_item()
+        box = li.get_child()
+        dot = box.get_first_child()
+        lbl = dot.get_next_sibling()
+        dot.set_draw_func(lambda a, cr, w, h, rr=item.r, gg=item.g, bb=item.b:
+            (cr.set_source_rgb(rr, gg, bb), cr.arc(w/2, h/2, 3.5, 0, 2*math.pi), cr.fill()))
+        lbl.set_label(item.planif)
+
+    def _on_unbind_nombre(f, li):
+        li.get_child().get_first_child().set_draw_func(lambda a, cr, w, h: None)
+
+    fab_nombre.connect("setup", _on_setup_nombre)
+    fab_nombre.connect("bind", _on_bind_nombre)
+    fab_nombre.connect("unbind", _on_unbind_nombre)
+
+    col_nombre = Gtk.ColumnViewColumn(title=traducir("Planificador"), factory=fab_nombre)
+    col_nombre.set_fixed_width(160)
+    columna_vista.append_column(col_nombre)
+
+    # Columnas de métricas
+    for etiqueta, attr in zip(etiquetas, attrs):
+        fab = Gtk.SignalListItemFactory()
+
+        def _on_setup(f, li):
+            box = Gtk.Box(spacing=2, halign=Gtk.Align.CENTER)
+            lbl = Gtk.Label(halign=Gtk.Align.CENTER, css_classes=["caption-heading"])
+            lbl.set_width_chars(8)
             box.append(lbl)
             li.set_child(box)
 
-        def _on_bind_nombre(f, li):
+        def _on_bind(f, li, a=attr):
             item = li.get_item()
-            box = li.get_child()
-            dot = box.get_first_child()
-            lbl = dot.get_next_sibling()
-            dot.set_draw_func(lambda a, cr, w, h, rr=item.r, gg=item.g, bb=item.b:
-                (cr.set_source_rgb(rr, gg, bb), cr.arc(w/2, h/2, 3.5, 0, 2*math.pi), cr.fill()))
-            lbl.set_label(item.planif)
-
-        def _on_unbind_nombre(f, li):
-            li.get_child().get_first_child().set_draw_func(lambda a, cr, w, h: None)
-
-        fab_nombre.connect("setup", _on_setup_nombre)
-        fab_nombre.connect("bind", _on_bind_nombre)
-        fab_nombre.connect("unbind", _on_unbind_nombre)
-
-        col_nombre = Gtk.ColumnViewColumn(title=traducir("Planificador"), factory=fab_nombre)
-        col_nombre.set_fixed_width(160)
-        columna_vista.append_column(col_nombre)
-
-        # ── Columnas de métricas ──
-        for etiqueta, attr in zip(etiquetas, attrs):
-            fab = Gtk.SignalListItemFactory()
-
-            def _on_setup(f, li):
-                box = Gtk.Box(spacing=2, halign=Gtk.Align.CENTER)
-                lbl = Gtk.Label(halign=Gtk.Align.CENTER, css_classes=["caption-heading"])
-                lbl.set_width_chars(8)
-                box.append(lbl)
-                li.set_child(box)
-
-            def _on_bind(f, li, a=attr):
-                item = li.get_item()
-                lbl = li.get_child().get_first_child()
-                lbl.set_label(f"{getattr(item, a):,.0f}")
-
-                if a in ("avg", "ultimo") and not es_latencia:
-                    es_mejor = all(getattr(item, a) >= getattr(m, a) for m in modelo)
-                elif a == "minimo" and not es_latencia:
-                    es_mejor = all(getattr(item, a) >= getattr(m, a) for m in modelo)
-                else:
-                    es_mejor = all(getattr(item, a) <= getattr(m, a) for m in modelo)
-
-                if es_mejor:
-                    lbl.add_css_class("accent")
-                else:
-                    lbl.remove_css_class("accent")
-
-            def _on_unbind(f, li):
-                lbl = li.get_child().get_first_child()
+            lbl = li.get_child().get_first_child()
+            lbl.set_label(f"{getattr(item, a):,.0f}")
+            if a in ("avg", "ultimo") and not es_latencia:
+                es_mejor = all(getattr(item, a) >= getattr(m, a) for m in modelo)
+            elif a == "minimo" and not es_latencia:
+                es_mejor = all(getattr(item, a) >= getattr(m, a) for m in modelo)
+            else:
+                es_mejor = all(getattr(item, a) <= getattr(m, a) for m in modelo)
+            if es_mejor:
+                lbl.add_css_class("accent")
+            else:
                 lbl.remove_css_class("accent")
 
-            fab.connect("setup", _on_setup)
-            fab.connect("bind", _on_bind)
-            fab.connect("unbind", _on_unbind)
+        def _on_unbind(f, li):
+            li.get_child().get_first_child().remove_css_class("accent")
 
-            col = Gtk.ColumnViewColumn(title=etiqueta, factory=fab)
-            col.set_fixed_width(100)
-            _attr = attr
+        fab.connect("setup", _on_setup)
+        fab.connect("bind", _on_bind)
+        fab.connect("unbind", _on_unbind)
 
-            sorter = Gtk.CustomSorter()
-            sorter.set_sort_func(_crear_funcion_comparar(_attr))
-            col.set_sorter(sorter)
-            columna_vista.append_column(col)
+        col = Gtk.ColumnViewColumn(title=etiqueta, factory=fab)
+        col.set_fixed_width(100)
+        sorter = Gtk.CustomSorter()
+        sorter.set_sort_func(_crear_funcion_comparar(attr))
+        col.set_sorter(sorter)
+        columna_vista.append_column(col)
 
-        grupo = Adw.PreferencesGroup(title=traducir("Comparativa de Planificadores"))
-        frame = Gtk.Frame(css_classes=["card"])
-        frame.set_margin_start(6)
-        frame.set_margin_end(6)
-        frame.set_margin_top(2)
-        frame.set_margin_bottom(2)
+    grupo = Adw.PreferencesGroup(title=traducir("Comparativa de Planificadores"))
+    frame = Gtk.Frame(css_classes=["card"])
+    for m in ("start", "end", "top", "bottom"):
+        getattr(frame, f"set_margin_{m}")(6)
+    scroll = Gtk.ScrolledWindow(vscrollbar_policy=Gtk.PolicyType.NEVER, hscrollbar_policy=Gtk.PolicyType.NEVER)
+    scroll.set_child(columna_vista)
+    frame.set_child(scroll)
+    grupo.add(frame)
+    if pagina:
+        pagina.add(grupo)
+    win._hist_trend_stat_groups.append(grupo)
 
-        scroll = Gtk.ScrolledWindow(vscrollbar_policy=Gtk.PolicyType.NEVER, hscrollbar_policy=Gtk.PolicyType.NEVER)
-        scroll.set_child(columna_vista)
-        frame.set_child(scroll)
-        grupo.add(frame)
 
-        if pagina:
-            pagina.add(grupo)
-        win._hist_trend_stat_groups.append(grupo)
-
+def _refrescar_tendencia(win):
+    tipo_prueba, datos, planificadores = _obtener_datos_tendencia(win)
+    _iniciar_animacion_crossfade(win, datos, planificadores)
+    estadisticas = _calcular_estadisticas(datos, planificadores)
+    win._hist_chart_stats = estadisticas
+    _construir_leyenda(win, planificadores, estadisticas)
+    _construir_resumen(win, datos, estadisticas, planificadores, tipo_prueba)
+    _construir_tabla(win, datos, planificadores, estadisticas, tipo_prueba)
     win._hist_chart.queue_draw()
 
 

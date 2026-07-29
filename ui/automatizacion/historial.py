@@ -10,6 +10,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gdk
 
 from utils.i18n import traducir
+from utils.helpers import vaciar_contenedor
 from core.scoring import calcular_scores_finales
 from core.tipos import MAPA_CHART, valor_para_grafico
 from core.database import consultar_runs_auto, cargar_resultados_de_run
@@ -137,7 +138,7 @@ def seleccionar_run(win, row):
     """Salta directamente al run seleccionado en el popover."""
     if row is None:
         return
-    if getattr(win, "_cargando_historial", False):
+    if win.auto_state.cargando_historial:
         return
     idx = getattr(row, "run_index", -1)
     if idx < 0 or idx >= len(win.auto_state.historial_runs):
@@ -169,12 +170,11 @@ def seleccionar_run(win, row):
     win.grafico.valores_animados = {}
     win.grafico.max_por_categoria = [1.0] * win.grafico.num_categorias
 
-    while (c := win.box_leyenda.get_first_child()):
-        win.box_leyenda.remove(c)
+    vaciar_contenedor(win.box_leyenda)
 
     for sc, sdata in brutos.items():
         win.grafico.registrar_scheduler(sc)
-        crear_chip_leyenda(sc, win.grafico, win.box_leyenda)
+        crear_chip_leyenda(sc, grafico=win.grafico, box_leyenda=win.box_leyenda)
         for tt, res in sdata.items():
             chart_idx = MAPA_CHART.get(tt)
             if chart_idx is not None:
@@ -247,12 +247,11 @@ def navegar_historial(win, direccion):
     win.grafico.valores_animados = {}
     win.grafico.max_por_categoria = [1.0] * win.grafico.num_categorias
 
-    while (c := win.box_leyenda.get_first_child()):
-        win.box_leyenda.remove(c)
+    vaciar_contenedor(win.box_leyenda)
 
     for sc, sdata in brutos.items():
         win.grafico.registrar_scheduler(sc)
-        crear_chip_leyenda(sc, win.grafico, win.box_leyenda)
+        crear_chip_leyenda(sc, grafico=win.grafico, box_leyenda=win.box_leyenda)
 
         for tt, res in sdata.items():
             chart_idx = MAPA_CHART.get(tt)

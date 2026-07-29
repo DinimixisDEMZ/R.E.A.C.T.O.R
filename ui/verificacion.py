@@ -136,6 +136,8 @@ def mostrar_verificacion(win, automatico=False):
         resultados = ejecutar_verificaciones()
         GLib.idle_add(lambda: _completado(resultados))
 
+    barra_source = [0]
+
     def _animar_barra():
         val = barra.get_fraction()
         if val < 0.95:
@@ -143,7 +145,7 @@ def mostrar_verificacion(win, automatico=False):
             return True
         return False
 
-    GLib.timeout_add(80, _animar_barra)
+    barra_source[0] = GLib.timeout_add(80, _animar_barra)
 
     def _reiniciar():
         for s in spinners:
@@ -161,11 +163,17 @@ def mostrar_verificacion(win, automatico=False):
         subtitulo.set_label(traducir("Comprobando herramientas, comandos y dependencias…"))
         barra.set_fraction(0.0)
         barra.set_show_text(False)
-        GLib.timeout_add(80, _animar_barra)
+        barra_source[0] = GLib.timeout_add(80, _animar_barra)
         threading.Thread(target=_ejecutar, daemon=True).start()
+
+    def _limpiar_timer():
+        if barra_source[0]:
+            GLib.source_remove(barra_source[0])
+            barra_source[0] = 0
 
     btn_reintentar.connect("clicked", lambda b: _reiniciar())
     btn_continuar.connect("clicked", lambda b: dialog.close())
+    dialog.connect("closed", lambda *_: _limpiar_timer())
 
     # ── Cerrar con Escape ──
     key_controller = Gtk.EventControllerKey()

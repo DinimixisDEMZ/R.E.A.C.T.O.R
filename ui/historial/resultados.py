@@ -2,7 +2,6 @@
 Página de resultados del historial — Muestra benchmarks anteriores agrupados.
 """
 
-import math
 import time
 from datetime import datetime
 
@@ -12,7 +11,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gdk
 
 from core.database import consultar_historial, obtener_schedulers_historial
-from utils.helpers import generar_color_hash
+from utils.colores import generar_color_hash, dibujar_dot
+from utils.helpers import vaciar_contenedor
+from widgets.legend import crear_chip_leyenda
 from utils.i18n import traducir
 from .constantes import _TIPOS_PRUEBA, _RANGOS_FECHA
 
@@ -57,8 +58,7 @@ def _reconstruir_chips(win):
     if caja is None:
         return
 
-    while (c := caja.get_first_child()):
-        caja.remove(c)
+    vaciar_contenedor(caja)
 
     win._hist_chips_active = set()
     planificadores = sorted(obtener_schedulers_historial())
@@ -66,50 +66,12 @@ def _reconstruir_chips(win):
     for planif in planificadores:
         r, g, b = generar_color_hash(planif)
 
-        chip = Gtk.Box(spacing=6, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
-        chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
-
-        punto = Gtk.DrawingArea()
-        punto.set_content_width(10)
-        punto.set_content_height(10)
-        punto.set_valign(Gtk.Align.CENTER)
-        punto.set_margin_start(6)
-        punto.set_draw_func(lambda a, cr, w, h, cr_r=r, cr_g=g, cr_b=b: (
-            cr.set_source_rgb(cr_r, cr_g, cr_b),
-            cr.arc(w / 2, h / 2, 4, 0, 2 * math.pi),
-            cr.fill(),
-            cr.set_source_rgba(1, 1, 1, 0.15),
-            cr.arc(w / 2, h / 2, 4, 0, 2 * math.pi),
-            cr.set_line_width(1),
-            cr.stroke(),
-        ))
-        chip.append(punto)
-
-        etiqueta = Gtk.Label(label=planif, css_classes=["caption"])
-        etiqueta.set_margin_top(3)
-        etiqueta.set_margin_bottom(3)
-        etiqueta.set_margin_end(8)
-        chip.append(etiqueta)
-
-        chip.set_opacity(0.5)
-        punto.set_opacity(0.4)
-
-        def _alternar(gesture, n, x, y, ch=chip, d=punto, s=planif):
-            if s in win._hist_chips_active:
-                win._hist_chips_active.discard(s)
-                ch.set_opacity(0.5)
-                d.set_opacity(0.4)
-            else:
-                win._hist_chips_active.add(s)
-                ch.set_opacity(1.0)
-                d.set_opacity(1.0)
-            _refrescar_historial(win)
-
-        clic = Gtk.GestureClick()
-        clic.connect("pressed", _alternar)
-        chip.add_controller(clic)
-
-        caja.append(chip)
+        crear_chip_leyenda(
+            planif, color_func=lambda n: (r, g, b) if n == planif else (0.5, 0.5, 0.5),
+            on_toggle=lambda s, v: _refrescar_historial(win), dot_radius=4, dot_size=10,
+            opacity_hidden=0.5, ocultos_set=win._hist_chips_active,
+            box_leyenda=caja
+        )
 
 
 def _refrescar_historial(win):
@@ -128,8 +90,7 @@ def _refrescar_historial(win):
     if activos:
         resultados = [r for r in resultados if r["scheduler_name"] in activos]
 
-    while (c := win._hist_box_resultados.get_first_child()):
-        win._hist_box_resultados.remove(c)
+    vaciar_contenedor(win._hist_box_resultados)
 
     contador = 0
     grupos = {}
@@ -145,11 +106,8 @@ def _refrescar_historial(win):
         punto.set_content_width(8)
         punto.set_content_height(8)
         punto.set_valign(Gtk.Align.CENTER)
-        punto.set_draw_func(lambda a, cr, w, h, cr_r=r_sched, cr_g=g_sched, cr_b=b_sched: (
-            cr.set_source_rgb(cr_r, cr_g, cr_b),
-            cr.arc(w / 2, h / 2, 3.5, 0, 2 * math.pi),
-            cr.fill(),
-        ))
+        punto.set_draw_func(lambda a, cr, w, h, cr_r=r_sched, cr_g=g_sched, cr_b=b_sched:
+                            dibujar_dot(cr, w, h, cr_r, cr_g, cr_b, 3.5))
         caja_encabezado.append(punto)
         grupo.set_header_suffix(caja_encabezado)
 

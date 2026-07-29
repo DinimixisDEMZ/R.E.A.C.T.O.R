@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "reactor"
-version = "1.2"
+dynamic = ["version"]
 description = "Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)"
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -36,10 +36,14 @@ test = [
 [project.scripts]
 reactor = "main:main"
 
-[project.gui-scripts]
-reactor = "main:main"
+[tool.setuptools.dynamic]
+version = {attr = "core.constantes.VERSION"}
 
 [tool.setuptools.packages.find]
+include = ["core*", "ui*", "utils*", "widgets*"]
+
+[tool.setuptools.package-data]
+reactor = ["data/icons/*"]
 include = ["core*", "ui*", "utils*", "widgets*"]
 
 [tool.pytest.ini_options]

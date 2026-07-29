@@ -242,10 +242,31 @@ def configurar_ui_automatizacion(win):
             "El puntaje final combina 3 ejes:\n"
             "• Potencia — rendimiento bruto (throughput)\n"
             "• Respuesta — latencia y agilidad\n"
-            "• Fluidez — eficiencia de CPU y consistencia\n\n"
-            "Usa media armónica para penalizar valores bajos en cualquier eje."
+            "• Fluidez — eficiencia de CPU y consistencia\n"
         )
         cols.append(Gtk.Label(label=traducir(texto_score), wrap=True, xalign=0, css_classes=["dim-label"]))
+
+        cols.append(Gtk.Separator())
+
+        lbl_formula_tit = Gtk.Label(
+            label=traducir("Fórmula"),
+            css_classes=["heading"], halign=Gtk.Align.START
+        )
+        cols.append(lbl_formula_tit)
+
+        formula = (
+            "Para cada categoría:\n"
+            "  r_pot = mi_valor / mejor_valor  (throughput)\n"
+            "  r_pot = mejor_valor / mi_valor  (latencia)\n"
+            "  r_lat = mejor_p95 / mi_p95\n"
+            "  r_flu = max(0.01, 1.0 - waste)\n\n"
+            "  score = r_pot × P_pot + r_lat × P_lat + r_flu × P_flu\n\n"
+            "Puntaje final:\n"
+            "  media_armónica(scores) × 100\n\n"
+            "Pesos por defecto: Potencia 45%, Respuesta 45%, Fluidez 10%"
+        )
+        cols.append(Gtk.Label(label=traducir(formula), wrap=True, xalign=0,
+                              css_classes=["dim-label"], margin_start=8, selectable=True))
 
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_child(cols)

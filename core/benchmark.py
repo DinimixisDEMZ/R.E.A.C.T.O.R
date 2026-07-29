@@ -15,7 +15,8 @@ import tempfile
 
 from core.constantes import SISTEMA_BASE
 
-from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
+from utils.logging import log as _log, log_subprocess_output, log_error_benchmark
+from utils.helpers import limpiar_texto as _limpiar_texto, resultado_base
 
 
 def _parsear_yaml_simple(contenido):
@@ -93,14 +94,10 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
                 "disk": {"val": 6000, "p95": 12.0, "fair": 0.15},
             }.get(tipo, {"val": 9000, "p95": 6.0, "fair": 0.10})
             factor = 0.9 + (seed % 200) / 1000.0
-            return {
-                "tipo": tipo,
-                "valor": base["val"] * factor,
-                "p95": base["p95"] * (0.8 + (seed % 40) / 100.0),
-                "waste": base["fair"] * (0.9 + (seed % 20) / 100.0),
-                "sched": sc_act if sc_act != SISTEMA_BASE else "scx_rusty",
-                "modo": modo_act
-            }
+            return resultado_base(scx_manager, tipo,
+                base["val"] * factor,
+                base["p95"] * (0.8 + (seed % 40) / 100.0),
+                base["fair"] * (0.9 + (seed % 20) / 100.0), sc_act, modo_act)
         
         # ── Construir Comando stress-ng ──
         yaml_path = tempfile.mktemp(suffix=".yaml", prefix="scxctl_bench_")
@@ -146,22 +143,10 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         
         # ── Ejecutar ──
         # Log del comando y tiempo de ejecución
-        if logs and tv_log:
-            _log(tv_log, f"Ejecutando comando: {' '.join(cmd)}")
         start_t = time.time()
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=tiempo + 10)
         elapsed = time.time() - start_t
-        if logs and tv_log:
-            _log(tv_log, f"Comando finalizado (exit={res.returncode}) en {elapsed:.2f}s")
-            if res.stdout:
-                limpia_out = _limpiar_texto(res.stdout)
-                for linea in (limpia_out or "").splitlines()[:200]:
-                    if any(p in linea.lower() for p in ("successful", "failed", "error", "warning", "cannot", "signal", "killed", "passed", "not enough")):
-                        _log(tv_log, f"STDOUT: {linea}")
-            if res.stderr:
-                limpia_err = _limpiar_texto(res.stderr)
-                for linea in (limpia_err or "").splitlines()[:200]:
-                    _log(tv_log, f"STDERR: {linea}")
+        log_subprocess_output(tv_log, logs, res, elapsed, label="Ejecutando comando", max_lines=200)
         
         if res.returncode != 0 and "passed:" not in res.stderr:
             if logs and tv_log:
@@ -250,25 +235,13 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
             _log(tv_log, f"Waste: {waste:.3f} | Scheduler: {sc_act} | Modo: {modo_act}")
             _log(tv_log, "-" * 50)
         
-        # Añadir datos crudos y metadatos al resultado para análisis posterior
-        resultado = {
-            "tipo": tipo,
-            "valor": valor,
-            "p95": p95,
-            "waste": waste,
-            "sched": sc_act,
-            "modo": modo_act,
-            "metrics": metricas,
-            "raw_yaml": contenido,
-            "ops_real": ops_real,
-            "ops_usr_sys": ops_usr_sys,
-            "cpu_usage": cpu_usage,
-            "wall_time": wall_time,
-            "ns_per_switch": ns_per_switch,
-            "cores": cores,
-            "timestamp": time.time()
-        }
-
+        resultado = resultado_base(scx_manager, tipo, valor, p95, waste, sc_act, modo_act)
+        resultado.update({
+            "metrics": metricas, "raw_yaml": contenido,
+            "ops_real": ops_real, "ops_usr_sys": ops_usr_sys,
+            "cpu_usage": cpu_usage, "wall_time": wall_time,
+            "ns_per_switch": ns_per_switch, "cores": cores,
+        })
         return resultado
     
     except FileNotFoundError:

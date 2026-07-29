@@ -65,9 +65,10 @@ def configurar_ui_diagnostico(win):
     vista = Adw.ToolbarView(content=pila)
     vista.add_top_bar(encabezado)
 
-    win.pag_diagnostico = Adw.NavigationPage(title=traducir("Diagnóstico"), tag="page_e")
-    win.pag_diagnostico.set_child(vista)
+    pag = Adw.NavigationPage(title=traducir("Diagnóstico"), tag="page_e")
+    pag.set_child(vista)
 
-    GLib.timeout_add(1500, actualizar_diagnostico_tiempo_real, win, controles)
+    pag._monitor_source = GLib.timeout_add(1500, actualizar_diagnostico_tiempo_real, win, controles)
+    pag.connect("destroy", lambda p: GLib.source_remove(p._monitor_source))
 
-    return win.pag_diagnostico
+    return pag

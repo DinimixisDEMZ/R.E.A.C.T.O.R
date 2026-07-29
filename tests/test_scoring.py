@@ -160,3 +160,32 @@ class TestCalcularValorGrafico:
     def test_unknown_type_returns_valor(self):
         res = {"valor": 42}
         assert valor_para_grafico(res, "unknown") == 42
+
+
+class TestCalcularScoreCategorias:
+    def test_basic_scoring(self):
+        data = {
+            "cpu": {"valor": 100, "p95": 5, "waste": 0.1, "cores": 4},
+            "threads": {"valor": 200, "p95": 3, "waste": 0.05, "cores": 4},
+        }
+        mejores = {
+            "cpu": {"max_val": 200, "min_val": 100, "min_p95": 3},
+            "threads": {"max_val": 200, "min_val": 100, "min_p95": 2},
+        }
+        scores, pot, resp, flu = calcular_score_categorias(data, mejores)
+        assert len(scores) == 2
+        assert all(s > 0 for s in scores)
+
+    def test_empty_data_returns_empty(self):
+        scores, pot, resp, flu = calcular_score_categorias({}, {})
+        assert scores == []
+        assert pot == 0
+        assert resp == 0
+        assert flu == 0
+
+    def test_custom_pesos(self):
+        data = {"cpu": {"valor": 100, "p95": 5, "waste": 0.1, "cores": 4}}
+        mejores = {"cpu": {"max_val": 100, "min_val": 100, "min_p95": 5}}
+        scores, pot, resp, flu = calcular_score_categorias(data, mejores, pesos=(0.5, 0.3, 0.2))
+        assert len(scores) == 1
+        assert 0 < scores[0] <= 1.0

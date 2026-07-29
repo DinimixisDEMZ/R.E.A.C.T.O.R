@@ -18,7 +18,8 @@ try:
 except ImportError:
     _HAS_CAIRO = False
 
-from utils.helpers import generar_color_hash, obtener_color_tema
+from utils.colores import generar_color_hash, obtener_color_tema
+from utils.helpers import format_raw_value, vaciar_contenedor
 from utils.i18n import traducir
 
 
@@ -57,7 +58,8 @@ class GraficoComparativo(Gtk.DrawingArea):
         self._pulse_adj = Gtk.Adjustment(lower=0.0, upper=1.0, step_increment=0.001, value=0.0)
         self._pulse_adj.connect("value-changed", lambda a: self.queue_draw())
 
-        GLib.timeout_add(INTERVALO_FRAME_MS, self.tick)
+        self._tick_source = GLib.timeout_add(INTERVALO_FRAME_MS, self.tick)
+        self.connect("destroy", lambda w: GLib.source_remove(self._tick_source))
 
     def registrar_scheduler(self, name):
         if name not in self.datos_raw:
@@ -194,19 +196,6 @@ class GraficoComparativo(Gtk.DrawingArea):
         raw_val = self.datos_raw[sc][cat_idx] if (sc in self.datos_raw and 0 <= cat_idx < len(self.datos_raw[sc])) else 0
         pct_val = self.valores_animados[sc][cat_idx] if (sc in self.valores_animados and 0 <= cat_idx < len(self.valores_animados[sc])) else 0
 
-        def format_raw_value(val):
-            if val is None:
-                return "0"
-            if val == 0:
-                return "0"
-            if val >= 1000000:
-                return f"{val/1000000:.2f}M"
-            if val >= 1000:
-                return f"{val:,.0f}".replace(",", ".")
-            if isinstance(val, float):
-                return f"{val:.1f}".rstrip("0").rstrip(".")
-            return str(val)
-
         desc_text = f"{cat_name}: {format_raw_value(raw_val)} ({pct_val:.1f}%)"
 
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
@@ -309,18 +298,6 @@ class GraficoComparativo(Gtk.DrawingArea):
                 cr.show_text(linea)
 
             val_max = self.max_animados[i] if i < len(self.max_animados) else 0
-            def format_raw_value(val):
-                if val is None:
-                    return "0"
-                if val == 0:
-                    return "0"
-                if val >= 1000000:
-                    return f"{val/1000000:.2f}M"
-                if val >= 1000:
-                    return f"{val:,.0f}".replace(",", ".")
-                if isinstance(val, float):
-                    return f"{val:.1f}".rstrip("0").rstrip(".")
-                return str(val)
             val_str = format_raw_value(val_max)
             ext_v = cr.text_extents(val_str)
             vx = cx + math.cos(ang) * (lbl_r + 18) - ext_v.width / 2

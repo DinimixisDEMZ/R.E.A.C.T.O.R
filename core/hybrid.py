@@ -17,7 +17,8 @@ import time
 from core.constantes import SISTEMA_BASE
 import json
 
-from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
+from utils.logging import log as _log, log_subprocess_output, log_error_benchmark
+from utils.helpers import limpiar_texto as _limpiar_texto, resultado_base
 
 
 def _a_microsegundos(valor, unidad):
@@ -32,23 +33,10 @@ def _a_microsegundos(valor, unidad):
 
 def _ejecutar_hybrid_cmd(cmd, tv_log=None, logs=True, timeout=60):
     """Ejecuta un comando hyperfine y devuelve (resultado_dict, elapsed)."""
-    if logs and tv_log:
-        _log(tv_log, f"Ejecutando: {' '.join(cmd)}")
-    
     start_t = time.time()
     res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     elapsed = time.time() - start_t
-    
-    if logs and tv_log:
-        _log(tv_log, f"Finalizado (exit={res.returncode}) en {elapsed:.2f}s")
-        if res.stdout:
-            for linea in _limpiar_texto(res.stdout).splitlines()[:30]:
-                if any(p in linea.lower() for p in ("warning", "error", "failed", "results have been estimated", "mean", "stddev", "min", "max", "steady")):
-                    _log(tv_log, f"STDOUT: {linea}")
-        if res.stderr:
-            for linea in _limpiar_texto(res.stderr).splitlines()[:30]:
-                if any(p in linea.lower() for p in ("warning", "error", "failed", "mean", "stddev")):
-                    _log(tv_log, f"STDERR: {linea}")
+    log_subprocess_output(tv_log, logs, res, elapsed, label="Ejecutando")
     
     if res.returncode != 0:
         return None, elapsed
@@ -115,17 +103,11 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "syscall": {"val": 180, "std": 45},
             }.get(tipo, {"val": 200, "std": 50})
             factor = 0.8 + (seed % 40) / 100.0
-            return {
-                "tipo": f"latencia_{tipo}",
-                "valor": base["val"] * factor,
-                "p95": base["std"] * factor,
-                "waste": 0.05 + (seed % 10) / 1000.0,
-                "sched": sc_act if sc_act != SISTEMA_BASE else "scx_rusty",
-                "modo": modo_act,
-                "mean_us": base["val"] * factor,
-                "std_us": base["std"] * factor,
-                "runs": 100
-            }
+            res = resultado_base(scx_manager, f"latencia_{tipo}",
+                base["val"] * factor, base["std"] * factor,
+                0.05 + (seed % 10) / 1000.0, sc_act, modo_act)
+            res.update({"mean_us": base["val"] * factor, "std_us": base["std"] * factor, "runs": 100})
+            return res
         
         # ── Construir Comando hyperfine ──
         tmpdir = tempfile.mkdtemp(prefix="scxctl_")
@@ -156,14 +138,15 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 from utils.helpers import ruta_bundleada
                 bundle = ruta_bundleada("usr/share/reactor/rt-tests")
                 if bundle:
-                    rt_dir = bundle
+                    if logs and tv_log:
+                        _log(tv_log, f"Copiando rt-tests del bundle a {rt_dir}…")
+                    shutil.rmtree(rt_dir, ignore_errors=True)
+                    shutil.copytree(bundle, rt_dir, symlinks=False)
             if not os.path.isfile(f"{rt_dir}/Makefile"):
                 if logs and tv_log:
-                    _log(tv_log, "rt-tests no encontrado. Compilación paralela omitida.", nivel="warning")
+                    _log(tv_log, "rt-tests source no encontrado. Compilación paralela omitida.", nivel="warning")
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 return None
-            # Compilación: -p (prepare) limpia el árbol ANTES de medir cada intento,
-            # para que el cronómetro solo mida la compilación real.
             cpus = os.cpu_count() or 4
             cmd = [
                 "hyperfine",
@@ -229,30 +212,19 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             _log(tv_log, f"Scheduler: {sc_act} | Modo: {modo_act}")
             _log(tv_log, "-" * 50)
         
-        return {
-            "tipo": f"latencia_{tipo}",
-            "valor": mean_us,
-            "p95": std_us,
-            "waste": waste,
-            "sched": sc_act,
-            "modo": modo_act,
-            "mean_us": mean_us,
-            "std_us": std_us,
-            "min_us": metricas.get('min_us', 0),
-            "max_us": metricas.get('max_us', 0),
-            "runs": runs,
-            "timestamp": time.time()
-        }
+        res = resultado_base(scx_manager, f"latencia_{tipo}", mean_us, std_us, waste, sc_act, modo_act)
+        res.update({"mean_us": mean_us, "std_us": std_us,
+                     "min_us": metricas.get('min_us', 0),
+                     "max_us": metricas.get('max_us', 0), "runs": runs})
+        return res
     
     except FileNotFoundError:
-        if logs and tv_log:
-            _log(tv_log, "Error: hyperfine no encontrado. Instálalo con: sudo eopkg install hyperfine", nivel="error")
+        log_error_benchmark(tv_log, logs, FileNotFoundError("hyperfine"), "hyperfine")
         return None
     except subprocess.TimeoutExpired:
         if logs and tv_log:
             _log(tv_log, f"Prueba excedió el tiempo límite ({timeout}s).", nivel="error")
         return None
     except (subprocess.SubprocessError, OSError, ValueError, KeyError) as e:
-        if logs and tv_log:
-            _log(tv_log, f"Error: {e}", nivel="error")
+        log_error_benchmark(tv_log, logs, e)
         return None

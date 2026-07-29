@@ -10,6 +10,9 @@ APP_DIR="$BUILD_DIR/R.E.A.C.T.O.R.AppDir"
 OUTPUT="$ROOT/R.E.A.C.T.O.R-x86_64.AppImage"
 VER_HYPERFINE="1.19.0"
 
+# Versión desde git tag (si no hay tag, usa constantes.py)
+VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || echo '')}"
+
 echo "=== Construyendo AppImage de R.E.A.C.T.O.R ==="
 
 rm -rf "$APP_DIR"
@@ -28,6 +31,12 @@ cp "$ROOT/"*.py "$APP_DIR/usr/share/reactor/"
 cp -r "$ROOT/core" "$ROOT/ui" "$ROOT/utils" "$ROOT/widgets" "$ROOT/data" "$APP_DIR/usr/share/reactor/"
 find "$APP_DIR/usr/share/reactor/" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
+# Inyectar versión desde git tag si está disponible
+if [ -n "$VERSION" ]; then
+    echo "  Inyectando versión v$VERSION desde git tag..."
+    sed -i "s/^VERSION = \".*\"/VERSION = \"${VERSION#v}\"/" "$APP_DIR/usr/share/reactor/core/constantes.py"
+fi
+
 # ── Binarios static ──
 echo "Copiando binarios..."
 
@@ -45,11 +54,10 @@ cp "$BUILD_DIR/hyperfine" "$APP_DIR/usr/bin/hyperfine"
 echo "  ✓ hyperfine"
 
 # stress-ng: Alpine musl static (repo community)
-STRESS_NG_BIN=""
 if [ ! -f "$BUILD_DIR/stress-ng" ]; then
     echo "  Descargando stress-ng desde Alpine (musl)..."
     STRESS_NG_APK=$(wget -q -O- "https://dl-cdn.alpinelinux.org/alpine/edge/community/x86_64/" 2>/dev/null | \
-        grep -oP 'stress-ng-\d+\.\d+\.\w+-r\d+\.apk' | sort -V | tail -1 || true)
+        grep -oE 'stress-ng-[0-9]+\.[0-9]+\.[a-zA-Z0-9]+-r[0-9]+\.apk' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1 || true)
     if [ -n "$STRESS_NG_APK" ]; then
         wget -q -O /tmp/stress-ng.apk "https://dl-cdn.alpinelinux.org/alpine/edge/community/x86_64/$STRESS_NG_APK"
         tar xzf /tmp/stress-ng.apk -C /tmp/ 2>/dev/null || true
@@ -64,49 +72,40 @@ if [ -f "$BUILD_DIR/stress-ng" ]; then
     cp "$BUILD_DIR/stress-ng" "$APP_DIR/usr/bin/stress-ng"
     echo "  ✓ stress-ng (static)"
 else
-    STRESS_NG_BIN=$(which stress-ng 2>/dev/null || true)
-    if [ -n "$STRESS_NG_BIN" ]; then
-        cp -L "$STRESS_NG_BIN" "$APP_DIR/usr/bin/stress-ng"
-        echo "  ✓ stress-ng (sistema)"
-    else
-        echo "  ⚠ stress-ng no disponible"
+    echo "  ⚠ stress-ng no disponible (se omite — solo afecta benchmark memory/threads)"
+fi
+
+# cyclictest + rt-tests source
+# Se compila cyclictest estático y se bundlea el source para benchmark compile
+echo "  Preparando cyclictest y rt-tests..."
+BUILD_RT_DIR="$BUILD_DIR/rt-tests"
+if [ ! -d "$BUILD_RT_DIR" ] || [ ! -f "$BUILD_RT_DIR/Makefile" ]; then
+    rm -rf "$BUILD_RT_DIR"
+    echo "  Clonando rt-tests desde kernel.org..."
+    if ! git clone --depth 1 "https://git.kernel.org/pub/scm/utils/rt-tests/rt-tests.git" "$BUILD_RT_DIR"; then
+        echo "  ⚠ No se pudo clonar rt-tests. Compilación paralela no disponible."
+        BUILD_RT_DIR=""
     fi
 fi
-
-# cyclictest: se compila desde source en el benchmark de compilación
-# (no hay paquete Alpine). Si está en el sistema, se incluye.
-CYCLICTEST_BIN=$(which cyclictest 2>/dev/null || true)
-if [ -n "$CYCLICTEST_BIN" ]; then
-    cp -L "$CYCLICTEST_BIN" "$APP_DIR/usr/bin/cyclictest"
-    echo "  ✓ cyclictest (sistema)"
-else
-    echo "  - cyclictest se compilará desde rt-tests source si está presente"
-fi
-
-# rt-tests source (para benchmark de compilación)
-RT_TESTS_SRC="${RT_TESTS_DIR:-/tmp/rt-tests}"
-if [ ! -d "$RT_TESTS_SRC" ] || [ ! -f "$RT_TESTS_SRC/Makefile" ]; then
-    echo "  Descargando rt-tests source desde kernel.org..."
-    git clone --depth 1 "https://git.kernel.org/pub/scm/utils/rt-tests/rt-tests.git" "$RT_TESTS_SRC" 2>/dev/null || {
-        echo "  ⚠ No se pudo clonar rt-tests. La compilación paralela no estará disponible."
-        RT_TESTS_SRC=""
-    }
-fi
-if [ -n "$RT_TESTS_SRC" ] && [ -f "$RT_TESTS_SRC/Makefile" ]; then
-    echo "  Copiando rt-tests source..."
+if [ -n "$BUILD_RT_DIR" ] && [ -f "$BUILD_RT_DIR/Makefile" ]; then
+    echo "  Compilando cyclictest estático..."
+    if make -C "$BUILD_RT_DIR" cyclictest -j"$(nproc)"; then
+        cp "$BUILD_RT_DIR/cyclictest" "$BUILD_DIR/cyclictest"
+        chmod +x "$BUILD_DIR/cyclictest"
+        cp "$BUILD_DIR/cyclictest" "$APP_DIR/usr/bin/cyclictest"
+        echo "  ✓ cyclictest (estático)"
+    else
+        echo "  ⚠ No se pudo compilar cyclictest."
+    fi
+    # Source para benchmark de compilación paralela (se copia a /tmp al ejecutar)
+    echo "  Copiando rt-tests source al AppImage..."
     mkdir -p "$APP_DIR/usr/share/reactor/rt-tests"
-    cp -r "$RT_TESTS_SRC/"* "$APP_DIR/usr/share/reactor/rt-tests/"
+    cp -r "$BUILD_RT_DIR/"* "$APP_DIR/usr/share/reactor/rt-tests/"
     echo "  ✓ rt-tests source"
 fi
 
-# scxctl: solo desde el sistema (específico del kernel)
-SCXCTL_BIN=$(which scxctl 2>/dev/null || true)
-if [ -n "$SCXCTL_BIN" ]; then
-    cp -L "$SCXCTL_BIN" "$APP_DIR/usr/bin/scxctl"
-    echo "  ✓ scxctl"
-else
-    echo "  ⚠ scxctl no encontrado"
-fi
+# scxctl NO se bundlea — viene siempre del sistema (específico del kernel).
+# El AppImage verifica scxctl en el sistema al arrancar.
 
 # ── Desktop y metadatos ──
 cp "$APPIMAGE_SRC/R.E.A.C.T.O.R.desktop" "$APP_DIR/"

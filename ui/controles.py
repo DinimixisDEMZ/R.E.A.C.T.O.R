@@ -13,7 +13,8 @@ from gi.repository import Gtk, Adw, GLib
 
 from core.database import activar_db_temporal, desactivar_db_temporal, obtener_info_scheduler
 from ui.disponibilidad import recargar_disponibilidad_ui
-from utils.helpers import generar_color_hash
+from utils.colores import generar_color_hash, dibujar_dot
+from utils.logging import mostrar_toast
 from utils.iconos import establecer_iconos_idk
 from core.constantes import CARGANDO
 from utils.i18n import obtener_idiomas, establecer_idioma, establecer_usar_idioma_sistema, NOMBRES_IDIOMA, IDIOMA_ACTUAL, USAR_IDIOMA_SISTEMA, traducir
@@ -85,11 +86,8 @@ def configurar_ui_controles(win):
                 win._sched_info_link.set_uri("https://github.com/sched-ext/scx")
 
             r, g, b = generar_color_hash(name)
-            win._sched_info_dot.set_draw_func(lambda a, cr, w, h, cr_r=r, cr_g=g, cr_b=b: (
-                cr.set_source_rgb(cr_r, cr_g, cr_b),
-                cr.arc(w / 2, h / 2, 3.5, 0, 2 * math.pi),
-                cr.fill(),
-            ))
+            win._sched_info_dot.set_draw_func(lambda a, cr, w, h, cr_r=r, cr_g=g, cr_b=b:
+                                              dibujar_dot(cr, w, h, cr_r, cr_g, cr_b, 3.5))
             win._sched_info_dot.queue_draw()
             win._sched_info_card.set_visible(True)
         else:
@@ -270,11 +268,9 @@ def ejecutar_mantenimiento(win, btn, acc):
                     else:
                         mensaje = result.stderr.strip() or traducir("Comando fallido")
 
-                    msafe = GLib.markup_escape_text(mensaje)
-                    GLib.idle_add(lambda m=msafe: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Aviso: {}").format(m))))
+                    mostrar_toast(win, mensaje, prefijo=traducir("Aviso"))
             except (subprocess.SubprocessError, OSError) as e:
-                err_msg = GLib.markup_escape_text(str(e))
-                GLib.idle_add(lambda m=err_msg: win.toast_overlay.add_toast(Adw.Toast.new(f"Error: {m}")))
+                mostrar_toast(win, str(e), prefijo=traducir("Error"))
             finally:
                 GLib.idle_add(win.sincronizar_sistema)
 
@@ -308,13 +304,11 @@ def aplicar_cambio_scheduler(win, btn=None):
                 result = win.scx.ejecutar_con_sudo(cmd)
 
                 if result.returncode != 0:
-                    err_safe = GLib.markup_escape_text(result.stderr.strip() or traducir('Cambio fallido'))
-                    GLib.idle_add(lambda m=err_safe: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Error: {}").format(m))))
+                    mostrar_toast(win, result.stderr.strip() or traducir('Cambio fallido'), prefijo=traducir("Error"))
                 else:
-                    GLib.idle_add(lambda: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Aplicado: {} [{}]").format(sched, modo))))
+                    mostrar_toast(win, traducir("{} [{}]").format(sched, modo), prefijo=traducir("Aplicado"))
             except (subprocess.SubprocessError, OSError) as e:
-                err_msg = GLib.markup_escape_text(str(e))
-                GLib.idle_add(lambda m=err_msg: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Error: {}").format(m))))
+                mostrar_toast(win, str(e), prefijo=traducir("Error"))
             finally:
                 GLib.idle_add(win.sincronizar_sistema)
 

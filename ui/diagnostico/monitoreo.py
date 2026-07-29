@@ -11,7 +11,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, Gdk
 
-from utils.helpers import obtener_color_tema
+from utils.colores import obtener_color_tema
 from widgets.circular_meter import CircularMeter, _color_para_temperatura
 from core.constantes import CARGANDO
 from utils.i18n import traducir

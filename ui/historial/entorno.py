@@ -8,7 +8,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 from utils.i18n import traducir
-from utils.helpers import make_lscpu_finder, parse_lscpu_numeric, parse_lscpu_cache
+from utils.lscpu import make_lscpu_finder, parse_lscpu_numeric, parse_lscpu_cache
+from widgets.legend import crear_chip_informativo
 
 
 def _crear_pagina_entorno(win):
@@ -51,20 +52,7 @@ def _crear_pagina_entorno(win):
         ("preferences-system-time-symbolic", tiempo_act, f"{traducir('Actividad desde')}: {tiempo_act}"),
     ]
     for icon, text, tip in datos_chips:
-        chip = Gtk.Box(spacing=5, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
-        chip.set_margin_top(2)
-        chip.set_margin_bottom(2)
-        chip.set_has_tooltip(True)
-        chip.set_tooltip_text(tip)
-        img = Gtk.Image(icon_name=icon, pixel_size=12)
-        img.set_valign(Gtk.Align.CENTER)
-        img.set_margin_start(8)
-        chip.append(img)
-        lbl = Gtk.Label(label=text, css_classes=["caption-heading"])
-        lbl.set_margin_end(10)
-        lbl.set_margin_top(4)
-        lbl.set_margin_bottom(4)
-        chip.append(lbl)
+        chip = crear_chip_informativo(icon, text, tooltip=tip)
         caja_chips.append(chip)
     grupo_chips.add(caja_chips)
     pagina.add(grupo_chips)
@@ -199,7 +187,7 @@ def _crear_pagina_entorno(win):
 
         pairs = [
             ("General y Arquitectura", "Modos, tamaños de dirección, orden de bytes",
-             ["vulnerabilidad", "vulnerability", "mitigación", "mitigation"]),
+             []),
             ("Topología y Distribución", "Hilos por núcleo, núcleos por socket, sockets, NUMA",
              ["socket", "nodo", "numa", "hilo", "núcleo", "core", "thread", "siblings", "cpu(s)"]),
             ("Cachés de CPU", "Jerarquía de memorias caché L1d, L1i, L2 y L3",

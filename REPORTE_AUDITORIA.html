@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reporte de Auditoría — R.E.A.C.T.O.R v0.8</title>
+<style>
+  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --orange: #d29922; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 0; }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+  h1 { font-size: 2.2em; margin-bottom: 0.2em; color: #fff; }
+  h2 { font-size: 1.5em; margin: 2em 0 0.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); color: #fff; }
+  h3 { font-size: 1.15em; margin: 1.5em 0 0.5em; color: var(--accent); }
+  .subtitle { color: #8b949e; font-size: 1.05em; margin-bottom: 2em; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 2em 0; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px; text-align: center; }
+  .stat-card .num { font-size: 2em; font-weight: 700; display: block; }
+  .stat-card .label { font-size: 0.85em; color: #8b949e; margin-top: 4px; }
+  .critical { color: var(--red); }
+  .high { color: var(--orange); }
+  .medium { color: var(--accent); }
+  .green { color: var(--green); }
+  table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9em; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--card); color: #8b949e; font-weight: 600; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px; }
+  tr:hover td { background: rgba(88,166,255,0.04); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: 600; }
+  .tag-red { background: rgba(248,81,73,0.15); color: var(--red); }
+  .tag-orange { background: rgba(210,153,34,0.15); color: var(--orange); }
+  .tag-blue { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .tag-green { background: rgba(63,185,80,0.15); color: var(--green); }
+  .file { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 0.85em; color: var(--accent); }
+  .section { margin: 1.5em 0; }
+  .issue { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 10px 0; }
+  .issue .file-line { font-size: 0.85em; color: #8b949e; }
+  .issue .desc { margin-top: 6px; }
+  .issue .fix { margin-top: 6px; padding: 8px 12px; background: rgba(63,185,80,0.08); border-radius: 6px; font-size: 0.9em; }
+  ul { padding-left: 1.5em; margin: 0.5em 0; }
+  li { margin: 0.3em 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>R.E.A.C.T.O.R — Auditoría y Refactorización</h1>
+  <div class="subtitle">Reporte completo de cambios aplicados en la versión 0.8 · Julio 2026</div>
+
+  <div class="stats">
+    <div class="stat-card"><span class="num critical">4</span><span class="label">Críticos</span></div>
+    <div class="stat-card"><span class="num high">9</span><span class="label">Altos</span></div>
+    <div class="stat-card"><span class="num medium">8</span><span class="label">Medios</span></div>
+    <div class="stat-card"><span class="num green">10</span><span class="label">DRY</span></div>
+    <div class="stat-card"><span class="num green">~285</span><span class="label">Líneas eliminadas</span></div>
+    <div class="stat-card"><span class="num green">49/49</span><span class="label">Tests pasando</span></div>
+  </div>
+
+  <h2>1. Bugs Críticos</h2>
+
+  <div class="issue">
+    <div class="file-line"><span class="tag tag-red">CRÍTICO</span> <span class="file">core/database.py:78</span></div>
+    <div class="desc"><strong>check_same_thread=False faltante</strong> — <code>guardar_resultados_batch()</code> desde thread secundario crashea con <code>ProgrammingError</code>.</div>
+    <div class="fix">✓ Agregado <code>check_same_thread=False</code> a <code>sqlite3.connect()</code>.</div>
+  </div>
+
+  <div class="issue">
+    <div class="file-line"><span class="tag tag-red">CRÍTICO</span> <span class="file">app.py:343</span></div>
+    <div class="desc"><strong>subprocess no importado</strong> — <code>sincronizar_sistema()</code> captura <code>SubprocessError</code> pero <code>subprocess</code> nunca se importó. <code>NameError</code> no capturable.</div>
+    <div class="fix">✓ Agregado <code>import subprocess</code> + removido <code>RE_RUNNING</code> unused.</div>
+  </div>
+
+  <div class="issue">
+    <div class="file-line"><span class="tag tag-red">CRÍTICO</span> <span class="file">ui/disponibilidad.py:465</span></div>
+    <div class="desc"><strong>set_sensitive(nivel="title")</strong> — pasa <code>nivel="title"</code> en vez de <code>True</code>. <code>TypeError</code> al hacer clic.</div>
+    <div class="fix">✓ Cambiado a <code>set_sensitive(True)</code>.</div>
+  </div>
+
+  <div class="issue">
+    <div class="file-line"><span class="tag tag-red">CRÍTICO</span> <span class="file">ui/automatizacion/historial.py:140</span></div>
+    <div class="desc"><strong>Guard de re-entrada roto</strong> — checkea <code>win._cargando_historial</code> pero setea <code>win.auto_state.cargando_historial</code>.</div>
+    <div class="fix">✓ Unificado a <code>win.auto_state.cargando_historial</code>.</div>
+  </div>
+
+  <h2>2. Bugs Altos</h2>
+
+  <table>
+    <tr><th>Archivo</th><th>Problema</th><th>Solución</th></tr>
+    <tr><td class="file">app.py:222</td><td>Sensor térmico sin try/except — timer se congela</td><td>try/except + UI "No disponible"</td></tr>
+    <tr><td class="file">app.py:260</td><td>HTML en release_notes (Pango no soporta)</td><td>Texto plano con bullets</td></tr>
+    <tr><td class="file">app.py:101</td><td>pag_diagnostico como side-effect</td><td>Refactor: retorna NavigationPage</td></tr>
+    <tr><td class="file">pesos.py:32</td><td>Animaciones usan slider_pot para los 3 sliders</td><td>Cada slider por separado</td></tr>
+    <tr><td class="file">deteccion.py:209</td><td>Scheduler names en traducir() → string vacío</td><td>Identificadores técnicos, sin traducir</td></tr>
+    <tr><td class="file">helpers.py:62</td><td>Log tags aplicados a rango cero — colores nunca se ven</td><td>Offset capturado antes del insert + DRY</td></tr>
+    <tr><td class="file">i18n.py:109</td><td>NOMBRES_IDIOMA: pt_BR lookup roto</td><td>pt_BR → pt, entradas muertas removidas</td></tr>
+    <tr><td class="file">build-appimage.sh:52</td><td>grep -oP GNU-only + fallback binario dinámico</td><td>grep -oE, sort portable, sin fallback</td></tr>
+  </table>
+
+  <h2>3. Bugs Medios</h2>
+
+  <h3>3.1 Memory Leaks — Timers sin cleanup</h3>
+  <table>
+    <tr><th>Archivo</th><th>Timer</th><th>Solución</th></tr>
+    <tr><td class="file">ui/grafico.py:60</td><td>Tick animación radar</td><td><code>self._tick_source</code> + cleanup en destroy</td></tr>
+    <tr><td class="file">ui/diagnostico/pagina.py:71</td><td>Monitoreo en vivo 1.5s</td><td><code>pag._monitor_source</code> + cleanup en destroy</td></tr>
+    <tr><td class="file">ui/automatizacion/deteccion.py:82</td><td>Animación auto-test</td><td><code>win.auto_state.anim_timer</code> + cleanup en finalizar</td></tr>
+    <tr><td class="file">ui/verificacion.py:146</td><td>Barra de progreso</td><td><code>barra_source[0]</code> + cleanup en closed</td></tr>
+  </table>
+
+  <h3>3.2 Lógica</h3>
+  <table>
+    <tr><th>Archivo</th><th>Problema</th><th>Solución</th></tr>
+    <tr><td class="file">dibujo.py:316</td><td>Crosshair usa ancho_trazo en vez de alto_trazo</td><td>Parámetro alto_trazo agregado</td></tr>
+    <tr><td class="file">entorno.py:200</td><td>Keywords vulnerabilidad en 2 categorías</td><td>Sacados del primer par</td></tr>
+    <tr><td class="file">scoring.py:134</td><td>throughput_per_core + efficiency nunca usados</td><td>Eliminados</td></tr>
+    <tr><td class="file">database.py:166</td><td>Acceso directo result["valor"] sin .get()</td><td>.get() con defaults</td></tr>
+  </table>
+
+  <h2>4. God Functions Refactorizadas</h2>
+  <table>
+    <tr><th>Función</th><th>Archivo</th><th>Antes</th><th>Después</th><th>Extraídas</th></tr>
+    <tr><td><code>iniciar_auto_test</code></td><td class="file">deteccion.py</td><td>208L</td><td>18L</td><td>9</td></tr>
+    <tr><td><code>_refrescar_tendencia</code></td><td class="file">tendencia.py</td><td>272L</td><td>12L</td><td>6</td></tr>
+    <tr><td><code>iniciar_verificacion</code></td><td class="file">disponibilidad.py</td><td>125L</td><td>25L</td><td>3</td></tr>
+    <tr><td><code>sincronizar_sistema</code></td><td class="file">app.py</td><td>41L</td><td>15L</td><td>2</td></tr>
+  </table>
+
+  <h2>5. Violaciones DRY Resueltas</h2>
+  <table>
+    <tr><th>#</th><th>Refactor</th><th>De</th><th>A</th><th>−Líneas</th></tr>
+    <tr><td>1</td><td>format_raw_value</td><td>2 defines en grafico.py</td><td>helpers.py</td><td>−24</td></tr>
+    <tr><td>2</td><td>Crear chip leyenda</td><td>4 implementaciones inline</td><td>widgets/legend.py</td><td>−120</td></tr>
+    <tr><td>3</td><td>Dibujar dot Cairo</td><td>6+ dibujos inline</td><td>helpers.py dibujar_dot()</td><td>−30</td></tr>
+    <tr><td>4</td><td>Child-removal</td><td>11 ocurrencias while</td><td>helpers.py vaciar_contenedor()</td><td>−22</td></tr>
+    <tr><td>5</td><td>Chip informativo</td><td>2 implementaciones</td><td>widgets/legend.py</td><td>−30</td></tr>
+    <tr><td>6</td><td>Subprocess log filter</td><td>benchmark.py + hybrid.py</td><td>helpers.py</td><td>−20</td></tr>
+    <tr><td>7</td><td>Error handlers benchmark</td><td>hybrid.py</td><td>helpers.py</td><td>−15</td></tr>
+    <tr><td>8</td><td>Toast error handling</td><td>controles.py + deteccion.py</td><td>helpers.py</td><td>−20</td></tr>
+    <tr><td>9</td><td>Result dict benchmark</td><td>benchmark.py + hybrid.py</td><td>helpers.py resultado_base()</td><td>−30</td></tr>
+    <tr><td colspan="4" style="text-align:right;font-weight:700;">Total</td><td><strong>−285</strong></td></tr>
+  </table>
+
+  <h2>6. Archivos Muertos Eliminados</h2>
+  <ul>
+    <li><span class="file">design/</span> — 7 archivos Python legacy (~50 KB)</li>
+    <li><span class="file">po/*/LC_MESSAGES/*.po~</span> — 6 archivos de backup</li>
+  </ul>
+
+  <h2>7. Nuevas Funciones Compartidas</h2>
+  <table>
+    <tr><th>Función</th><th>Ubicación</th><th>Propósito</th></tr>
+    <tr><td><code>format_raw_value(val)</code></td><td class="file">utils/helpers.py</td><td>Formateo numérico (M/K/decimales)</td></tr>
+    <tr><td><code>dibujar_dot(cr, w, h, r, g, b, radius)</code></td><td class="file">utils/helpers.py</td><td>Círculo coloreado Cairo</td></tr>
+    <tr><td><code>vaciar_contenedor(container)</code></td><td class="file">utils/helpers.py</td><td>Remover hijos Gtk</td></tr>
+    <tr><td><code>log_subprocess_output(...)</code></td><td class="file">utils/helpers.py</td><td>Log filtrado de subprocess</td></tr>
+    <tr><td><code>log_error_benchmark(...)</code></td><td class="file">utils/helpers.py</td><td>Manejo de errores benchmark</td></tr>
+    <tr><td><code>mostrar_toast(win, msg, prefijo)</code></td><td class="file">utils/helpers.py</td><td>Toast thread-safe</td></tr>
+    <tr><td><code>resultado_base(scx_manager, ...)</code></td><td class="file">utils/helpers.py</td><td>Dict base de resultados</td></tr>
+    <tr><td><code>crear_chip_leyenda(...)</code></td><td class="file">widgets/legend.py</td><td>Chip interactivo con dot + toggle</td></tr>
+    <tr><td><code>crear_chip_informativo(...)</code></td><td class="file">widgets/legend.py</td><td>Chip informativo icono + texto</td></tr>
+  </table>
+
+  <h2>8. Deuda Técnica Restante</h2>
+  <ul>
+    <li><strong>Build:</strong> Sin single-source de versión, sin SHA256 en descargas, CI sin pytest pre-build</li>
+    <li><strong>Tests:</strong> calcular_score_categorias sin test directo, 0 tests para hybrid.py/verificacion.py/estado.py</li>
+    <li><strong>Código:</strong> grafico.py: ocultos set declarado pero nunca poblado, helpers.py con 6 grupos no relacionados</li>
+    <li><strong>CI:</strong> Sin cache para appimagetool/rt-tests, build.sh nombrado "scxctl"</li>
+  </ul>
+</div>
+</body>
+</html>

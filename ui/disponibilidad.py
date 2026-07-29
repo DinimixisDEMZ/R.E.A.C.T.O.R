@@ -11,7 +11,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
-from utils.helpers import log, limpiar_texto
+from utils.logging import log
+from utils.helpers import limpiar_texto
 from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad, obtener_historial_compatibilidad
 from utils.i18n import traducir
 
@@ -342,127 +343,123 @@ def _refrescar_historial_compat(win):
     win._disp_pref_page.add(win._disp_grupo_historial)
 
 
+def _verificar_scheduler_dev(win, nombre, row, spinner, icono):
+    time.sleep(0.1)
+    hash_val = hash(nombre) % 100
+    disponible = hash_val < 75
+    msg = traducir("Disponible (Simulado)") if disponible else traducir("Error: Programa incompatible (Simulado)")
+    kv = win.versiones.get("kernel", "7.1.3-347.current")
+    guardar_compatibilidad(nombre, kv, disponible, msg)
+    GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg, w=False:
+                  _actualizar_fila(r, s, i, ok, t, w))
+    return nombre if disponible else None
+
+
+def _verificar_scheduler_real(win, nombre, row, spinner, icono):
+    def _reset(r=row, s=spinner, i=icono):
+        r.set_subtitle(traducir("Verificando..."))
+        i.set_visible(False)
+        s.set_visible(True)
+    GLib.idle_add(_reset)
+
+    disponible = False
+    is_warn = False
+    msg = traducir("Desconocido")
+
+    try:
+        win.scx.detener_todos()
+        time.sleep(0.3)
+
+        log(win.text_view_logs_disp, traducir("Probando scx_{}...").format(nombre))
+        result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", f"/usr/bin/scx_{nombre}"])
+        output = (result.stdout + result.stderr).strip()
+
+        if output:
+            limpio = limpiar_texto(output)
+            if limpio:
+                log(win.text_view_logs_disp, traducir("Resumen de scx_{}:\n{}").format(nombre, limpio))
+
+        has_error = any(kw in output for kw in ["Failed to load BPF", "No such file or directory", "Error:"])
+
+        if has_error:
+            lineas = [l for l in output.splitlines() if l.strip() and "[INFO]" not in l]
+            msg = lineas[-1].strip() if lineas else traducir("Programa BPF incompatible")
+        else:
+            started_ok = any(kw in output for kw in ["Calibration complete", "scheduler started", "Received shutdown signal", "ACTIVE"])
+            if result.returncode in [0, 124, 137] or started_ok:
+                disponible = True
+                is_warn = result.returncode == 0 and not started_ok
+                if started_ok:
+                    msg = traducir("Disponible (Verificado)")
+                elif result.returncode in [124, 137]:
+                    msg = traducir("Disponible (Residente)")
+                else:
+                    msg = traducir("Disponible (Shutdown detectado)")
+            else:
+                lineas = [l for l in output.splitlines() if l.strip()]
+                msg = lineas[-1].strip() if lineas else traducir("Error de salida ({})").format(result.returncode)
+
+    except (subprocess.SubprocessError, OSError) as e:
+        msg = str(e)
+
+    msg_safe = GLib.markup_escape_text(msg)
+    guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg_safe)
+    GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg_safe, w=is_warn:
+                  _actualizar_fila(r, s, i, ok, t, w))
+    win.scx.ejecutar_con_sudo(["scxctl", "stop"])
+    return nombre if disponible else None
+
+
+def _finalizar_verificacion(win, exitosos):
+    log(win.text_view_logs_disp, traducir("VERIFICACIÓN FINALIZADA"), nivel="title")
+    win.compatibles = exitosos
+    GLib.idle_add(lambda: _refrescar_historial_compat(win))
+    try:
+        from ui.automatizacion import _refrescar_auto_schedulers
+        GLib.idle_add(lambda: _refrescar_auto_schedulers(win))
+    except ImportError:
+        pass
+
+    def _update_badge():
+        win.nav_disponibilidad.remove_css_class("pulse-warning")
+        img = win.nav_disponibilidad.get_child().get_first_child()
+        if isinstance(img, Gtk.Image):
+            for cls in ["success", "error"]:
+                img.remove_css_class(cls)
+            if exitosos:
+                img.set_from_icon_name("emblem-ok-symbolic")
+                img.add_css_class("success")
+            else:
+                img.set_from_icon_name("dialog-error-symbolic")
+                img.add_css_class("error")
+    GLib.idle_add(_update_badge)
+    GLib.idle_add(win.sincronizar_sistema)
+    GLib.idle_add(win._btn_verificar_disp.set_sensitive, True)
+
+
 def iniciar_verificacion(win, btn=None):
-    """Inicia la verificación de compatibilidad BPF de todos los schedulers."""
     if win._verificando:
         return
 
     def _proceder():
         def _ejecutar():
             win._verificando = True
-            lista_exitosos = []
+            exitosos = []
             GLib.idle_add(win._btn_verificar_disp.set_sensitive, False)
             log(win.text_view_logs_disp, traducir("INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF"), nivel="title")
 
-            # Limpieza nuclear preventiva
             win.scx.detener_todos()
             time.sleep(1.5)
 
             for nombre, (row, spinner, icono) in list(win._disp_filas.items()):
                 if win.modo_desarrollador:
-                    time.sleep(0.1)
-                    hash_val = hash(nombre) % 100
-                    disponible = hash_val < 75
-                    msg = traducir("Disponible (Simulado)") if disponible else traducir("Error: Programa incompatible (Simulado)")
-                    is_warn = False
-                    if disponible:
-                        lista_exitosos.append(nombre)
+                    r = _verificar_scheduler_dev(win, nombre, row, spinner, icono)
+                else:
+                    r = _verificar_scheduler_real(win, nombre, row, spinner, icono)
+                if r is not None:
+                    exitosos.append(r)
 
-                    kv_sim = win.versiones.get("kernel", "7.1.3-347.current")
-                    guardar_compatibilidad(nombre, kv_sim, disponible, msg)
-                    GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg, w=is_warn:
-                                  _actualizar_fila(r, s, i, ok, t, w))
-                    continue
-
-                def _reset(r=row, s=spinner, i=icono):
-                    r.set_subtitle(traducir("Verificando..."))
-                    i.set_visible(False)
-                    s.set_visible(True)
-                GLib.idle_add(_reset)
-
-                disponible = False
-                is_warn = False
-                msg = traducir("Desconocido")
-
-                try:
-                    win.scx.detener_todos()
-                    time.sleep(0.3)
-
-                    log(win.text_view_logs_disp, traducir("Probando scx_{}...").format(nombre))
-                    result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", f"/usr/bin/scx_{nombre}"])
-                    output = (result.stdout + result.stderr).strip()
-
-                    if output:
-                        output_limpio = limpiar_texto(output)
-                        if output_limpio:
-                            log(win.text_view_logs_disp, traducir("Resumen de scx_{}:\n{}").format(nombre, output_limpio))
-
-                    has_error = any(kw in output for kw in [
-                        "Failed to load BPF", "No such file or directory", "Error:"
-                    ])
-
-                    if has_error:
-                        disponible = False
-                        lineas = [l for l in output.splitlines() if l.strip() and "[INFO]" not in l]
-                        msg = lineas[-1].strip() if lineas else traducir("Programa BPF incompatible")
-                    else:
-                        log_success_keywords = ["Calibration complete", "scheduler started", "Received shutdown signal", "ACTIVE"]
-                        started_ok = any(kw in output for kw in log_success_keywords)
-
-                        if result.returncode in [0, 124, 137] or started_ok:
-                            disponible = True
-                            is_warn = (result.returncode == 0 and not started_ok)
-
-                            if started_ok:
-                                msg = traducir("Disponible (Verificado)")
-                            elif result.returncode in [124, 137]:
-                                msg = traducir("Disponible (Residente)")
-                            else:
-                                msg = traducir("Disponible (Shutdown detectado)")
-
-                            lista_exitosos.append(nombre)
-                        else:
-                            disponible = False
-                            lineas = [l for l in output.splitlines() if l.strip()]
-                            msg = lineas[-1].strip() if lineas else traducir("Error de salida ({})").format(result.returncode)
-
-                except (subprocess.SubprocessError, OSError) as e:
-                    disponible = False
-                    msg = str(e)
-
-                msg_safe = GLib.markup_escape_text(msg)
-
-                guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg_safe)
-                GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg_safe, w=is_warn:
-                              _actualizar_fila(r, s, i, ok, t, w))
-                win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-
-            log(win.text_view_logs_disp, traducir("VERIFICACIÓN FINALIZADA"), nivel="title")
-            win.compatibles = lista_exitosos
-            GLib.idle_add(lambda: _refrescar_historial_compat(win))
-            try:
-                from ui.automatizacion import _refrescar_auto_schedulers
-                GLib.idle_add(lambda: _refrescar_auto_schedulers(win))
-            except ImportError:
-                pass
-
-            def _update_badge():
-                win.nav_disponibilidad.remove_css_class("pulse-warning")
-                img = win.nav_disponibilidad.get_child().get_first_child()
-                if isinstance(img, Gtk.Image):
-                    for cls in ["success", "error"]:
-                        img.remove_css_class(cls)
-
-                    if lista_exitosos:
-                        img.set_from_icon_name("emblem-ok-symbolic")
-                        img.add_css_class("success")
-                    else:
-                        img.set_from_icon_name("dialog-error-symbolic")
-                        img.add_css_class("error")
-            GLib.idle_add(_update_badge)
-
-            GLib.idle_add(win.sincronizar_sistema)
-            GLib.idle_add(win._btn_verificar_disp.set_sensitive, nivel="title")
+            _finalizar_verificacion(win, exitosos)
             win._verificando = False
 
         threading.Thread(target=_ejecutar, daemon=True).start()

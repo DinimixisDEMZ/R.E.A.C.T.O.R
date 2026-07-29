@@ -1,6 +1,7 @@
 """
 Motor de verificación del sistema.
 Ejecuta chequeos de herramientas, comandos y dependencias al arrancar.
+En modo AppImage solo usa herramientas internas (bundleadas).
 """
 
 import os
@@ -35,18 +36,28 @@ class Verificacion:
 _RESULTADOS: list[tuple[Verificacion, Resultado]] = []
 
 
+# ─── Modo de ejecución ───
+
+
+def _modo_appimage() -> bool:
+    return "APPDIR" in os.environ and bool(os.environ.get("APPDIR"))
+
+
 # ─── Chequeos individuales ───
+
 
 def _check_binario(nombre_bin: str, nombre_mostrar: str = "") -> Resultado:
     nombre = nombre_mostrar or nombre_bin
+    if _modo_appimage():
+        from utils.helpers import ruta_bundleada
+        bundle = ruta_bundleada(f"usr/bin/{nombre_bin}")
+        if bundle:
+            return Resultado(True, f"{bundle} (bundle)")
+        return Resultado(False, f"{nombre} no incluido en el AppImage")
     ruta = shutil.which(nombre_bin)
     if ruta:
         return Resultado(True, f"{ruta}")
-    from utils.helpers import ruta_bundleada
-    bundle = ruta_bundleada(f"usr/bin/{nombre_bin}")
-    if bundle:
-        return Resultado(True, f"{bundle} (bundle)")
-    return Resultado(False, "No encontrado")
+    return Resultado(False, "No encontrado en el sistema")
 
 
 def _check_version(nombre_bin: str, args: list[str] | None = None) -> Resultado:
@@ -96,8 +107,6 @@ def _parse_scxctl_list(salida: str) -> bool:
 
 
 def _parse_scxctl_get(salida: str) -> bool:
-    # Acepta cualquier salida no vacía (RUNNING, IDLE, etc.)
-    # Lo importante es que el comando se ejecute sin error
     return len(salida.strip()) > 0
 
 
@@ -124,28 +133,26 @@ def _check_sched_ext_sysfs() -> Resultado:
     root = Path("/sys/kernel/sched_ext")
     if root.is_dir():
         return Resultado(True, "/sys/kernel/sched_ext existe")
-    return Resultado(False, "No se encontró soporte sched_ext en sysfs", sugerencia="Asegurate de estar usando un kernel con CONFIG_SCHED_CLASS_EXT activado")
+    return Resultado(False, "No se encontró soporte sched_ext en sysfs",
+                     sugerencia="Asegurate de usar un kernel con CONFIG_SCHED_CLASS_EXT activado")
 
 
 def _check_rt_tests() -> Resultado:
-    """Verifica cyclictest: PATH, bundle, /tmp/rt-tests."""
+    if _modo_appimage():
+        from utils.helpers import ruta_bundleada
+        bundle = ruta_bundleada("usr/share/reactor/rt-tests")
+        if bundle:
+            return Resultado(True, "rt-tests source (bundle)")
+        binario = ruta_bundleada("usr/bin/cyclictest")
+        if binario:
+            return Resultado(True, f"cyclictest (bundle, sin source para compile)")
+        return Resultado(False, "rt-tests no incluido en el AppImage")
+    if os.path.isfile("/tmp/rt-tests/Makefile"):
+        return Resultado(True, "rt-tests source en /tmp/rt-tests")
     ruta = shutil.which("cyclictest")
     if ruta:
         return Resultado(True, f"{ruta}")
-    from utils.helpers import ruta_bundleada
-    bundle = ruta_bundleada("usr/bin/cyclictest")
-    if bundle:
-        return Resultado(True, f"{bundle} (bundle)")
-    makefile = Path("/tmp/rt-tests/Makefile")
-    if makefile.is_file():
-        cyclictest = Path("/tmp/rt-tests/cyclictest")
-        if cyclictest.is_file():
-            return Resultado(True, str(cyclictest))
-        return Resultado(True, "Clonado en /tmp/rt-tests (sin compilar)")
-    bundle_src = ruta_bundleada("usr/share/reactor/rt-tests/Makefile")
-    if bundle_src:
-        return Resultado(True, "Source bundleado en AppImage")
-    return Resultado(False, "No encontrado (ni en PATH ni bundleado)")
+    return Resultado(False, "No encontrado (ni source ni binario)")
 
 
 def _check_gresource() -> Resultado:
@@ -157,12 +164,6 @@ def _check_gresource() -> Resultado:
 
 
 def _check_dependencias_python() -> Resultado:
-    """Verifica que los módulos críticos de Python estén cargados.
-    
-    Usa sys.modules porque la app ya importó todo al arrancar.
-    find_spec falla con gi.repository.* e import_module
-    no es thread-safe en threads secundarios.
-    """
     modulos = [
         "gi", "gi.repository.Gtk", "gi.repository.Adw", "gi.repository.GLib",
         "gi.repository.Gio", "gi.repository.Gdk", "gi.repository.cairo",
@@ -173,26 +174,54 @@ def _check_dependencias_python() -> Resultado:
     return Resultado(True, f"{len(modulos)} módulos OK")
 
 
+def _check_appimage_integridad() -> Resultado:
+    appdir = os.environ.get("APPDIR", "")
+    if not appdir or not os.path.isdir(appdir):
+        return Resultado(False, "$APPDIR no apunta a un directorio válido")
+    required = [
+        ("usr/bin/stress-ng", "stress-ng"),
+        ("usr/bin/hyperfine", "hyperfine"),
+        ("usr/bin/cyclictest", "cyclictest"),
+        ("usr/share/reactor/rt-tests/Makefile", "rt-tests source"),
+        ("usr/share/reactor/main.py", "entrada principal"),
+    ]
+    fallos = [desc for subpath, desc in required if not os.path.isfile(os.path.join(appdir, subpath))]
+    if fallos:
+        return Resultado(False, f"Faltan: {', '.join(fallos)}",
+                         sugerencia="El AppImage está corrupto o mal construido")
+    return Resultado(True, "Estructura AppImage intacta")
+
+
 # ─── Registro maestro ───
 
 VERIFICACIONES: list[Verificacion] = [
-    # ── Críticos ──
+    # ── Críticos (siempre sistema) ──
     Verificacion("scxctl_bin", "scxctl instalado", lambda: _check_binario("scxctl"), critico=True),
     Verificacion("scxctl_list", "scxctl list (formato JSON)", lambda: _check_comando(["scxctl", "list"], parser=_parse_scxctl_list), critico=True),
     Verificacion("scxctl_get", "scxctl get (parseable)", lambda: _check_comando(["scxctl", "get"], parser=_parse_scxctl_get), critico=True),
+    Verificacion("scxctl_version", "Versión de scxctl", lambda: _check_version("scxctl", ["--version"]), critico=False),
     Verificacion("sched_ext", "Soporte sched_ext en kernel", _check_sched_ext_sysfs, critico=True),
     Verificacion("python_deps", "Dependencias Python", _check_dependencias_python, critico=True),
     Verificacion("gresource", "Iconos empaquetados (GResource)", _check_gresource, critico=False),
+    Verificacion("sudo_session", "Acceso a sudo", _check_sudo, critico=False),
+]
 
-    # ── No críticos ──
-    Verificacion("scxctl_version", "Versión de scxctl", lambda: _check_version("scxctl", ["--version"]), critico=False),
+# ── Chequeos específicos de herramientas (modo-aware) ──
+_VERIFICACIONES_HERRAMIENTAS: list[Verificacion] = [
     Verificacion("stressng_bin", "stress-ng instalado", lambda: _check_binario("stress-ng"), critico=False),
     Verificacion("stressng_version", "Versión de stress-ng", lambda: _check_version("stress-ng", ["--version"]), critico=False),
     Verificacion("hyperfine_bin", "hyperfine instalado", lambda: _check_binario("hyperfine"), critico=False),
     Verificacion("hyperfine_version", "Versión de hyperfine", lambda: _check_version("hyperfine", ["--version"]), critico=False),
-    Verificacion("sudo_session", "Acceso a sudo", _check_sudo, critico=False),
     Verificacion("rt_tests", "rt-tests (benchmark de compilación)", _check_rt_tests, critico=False),
 ]
+
+# ── Autodiagnóstico AppImage (solo en modo bundle) ──
+if _modo_appimage():
+    VERIFICACIONES.append(
+        Verificacion("appimage_integridad", "Integridad del AppImage", _check_appimage_integridad, critico=True)
+    )
+
+VERIFICACIONES.extend(_VERIFICACIONES_HERRAMIENTAS)
 
 
 def ejecutar_verificaciones(solo_ids: list[str] | None = None) -> list[tuple[Verificacion, Resultado]]:

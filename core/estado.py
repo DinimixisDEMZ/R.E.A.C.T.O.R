@@ -45,4 +45,5 @@ class EstadoDeteccionAuto:
     cargando_historial: bool = False
     peso_timer: int = 0
     recalc_timer: int = 0
+    anim_timer: int = 0
     info_clicks: int = 0

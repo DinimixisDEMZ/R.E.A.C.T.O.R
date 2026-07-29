@@ -22,14 +22,15 @@ def animar_sliders(win, d_pot, d_resp, d_flu, callback=None):
         if pendientes[0] == 0 and callback:
             callback()
 
-    for adj, destino_val in [
-        (win.slider_pot.get_adjustment(), d_pot),
-        (win.slider_resp.get_adjustment(), d_resp),
-        (win.slider_flu.get_adjustment(), d_flu),
+    for slider, destino_val in [
+        (win.slider_pot, d_pot),
+        (win.slider_resp, d_resp),
+        (win.slider_flu, d_flu),
     ]:
+        adj = slider.get_adjustment()
         destino = Adw.PropertyAnimationTarget.new(adj, "value")
         anim = Adw.TimedAnimation.new(
-            win.slider_pot, adj.get_value(), float(destino_val), 200, destino
+            slider, adj.get_value(), float(destino_val), 200, destino
         )
         anim.set_easing(Adw.Easing.EASE_OUT_QUAD)
         anim.connect("done", _hecho)

@@ -131,17 +131,11 @@ def _normalizar_entrada(item):
         waste = max(0.0, (100.0 - cpu_usage) / 100.0) if cpu_usage else 0.5
 
     cores = _first(item.get('cores'), m.get('cpus')) or 1
-    throughput_per_core = (val / cores) if cores else val
-
-    ops_usr_sys = _first(item.get('ops_usr_sys'), m.get('bogo-ops-per-second-usr-sys-time'))
-    efficiency = (val / ops_usr_sys) if ops_usr_sys and ops_usr_sys > 0 else val
 
     return {
         'val': val,
         'p95': p95,
         'waste': waste,
-        'throughput_per_core': throughput_per_core,
-        'efficiency': efficiency,
         'cores': cores,
         'raw': m
     }
