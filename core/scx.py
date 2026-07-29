@@ -9,7 +9,7 @@ import json
 from utils.helpers import RE_RUNNING, RE_JSON_ARRAY
 
 
-class ScxManager:
+class GestorScx:
     """Capa de abstracción para interactuar con scxctl y sudo."""
 
     def __init__(self, modo_desarrollador=False):

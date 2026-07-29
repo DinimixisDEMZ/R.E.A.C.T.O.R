@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import tempfile
 import time
+
+from core.constantes import SISTEMA_BASE
 import json
 
 from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
@@ -41,10 +43,12 @@ def _ejecutar_hybrid_cmd(cmd, tv_log=None, logs=True, timeout=60):
         _log(tv_log, f"Finalizado (exit={res.returncode}) en {elapsed:.2f}s")
         if res.stdout:
             for linea in _limpiar_texto(res.stdout).splitlines()[:30]:
-                _log(tv_log, f"STDOUT: {linea}")
+                if any(p in linea.lower() for p in ("warning", "error", "failed", "results have been estimated", "mean", "stddev", "min", "max", "steady")):
+                    _log(tv_log, f"STDOUT: {linea}")
         if res.stderr:
             for linea in _limpiar_texto(res.stderr).splitlines()[:30]:
-                _log(tv_log, f"STDERR: {linea}")
+                if any(p in linea.lower() for p in ("warning", "error", "failed", "mean", "stddev")):
+                    _log(tv_log, f"STDERR: {linea}")
     
     if res.returncode != 0:
         return None, elapsed
@@ -70,9 +74,9 @@ def _ejecutar_hybrid_cmd(cmd, tv_log=None, logs=True, timeout=60):
                         'max_us': _a_microsegundos(r.get('max', 0), 's'),
                         'runs': r.get('runs', 0),
                     }
-        except Exception as e:
+        except (OSError, ValueError, KeyError) as e:
             if logs and tv_log:
-                _log(tv_log, f"Error leyendo JSON: {e}", es_error=True)
+                _log(tv_log, f"Error leyendo JSON: {e}", nivel="error")
     
     return metricas, elapsed
 
@@ -82,7 +86,7 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
     
     Args:
         tipo: "fork" (fork+exec), "compile" (compilación paralela), "loaded" (latencia bajo carga)
-        scx_manager: Instancia de ScxManager
+        scx_manager: Instancia de GestorScx
         tv_log: TextView para logging
         tiempo: No usado directamente (hyperfine maneja sus propios tiempos)
         logs: Si True, escribe en el log
@@ -94,11 +98,11 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
     try:
         time.sleep(0.3)
         sc_act, modo_act = scx_manager.obtener_estado()
-        sc_act = sc_act or "Sistema Base"
+        sc_act = sc_act or SISTEMA_BASE
         modo_act = modo_act or "default"
         
         if logs and tv_log:
-            _log(tv_log, f"INICIANDO: LATENCIA {tipo.upper()} ({sc_act} [{modo_act}])", True)
+            _log(tv_log, f"INICIANDO: LATENCIA {tipo.upper()} ({sc_act} [{modo_act}])", nivel="title")
         
         # ── Modo Desarrollador ──
         if modo_dev:
@@ -115,8 +119,8 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "tipo": f"latencia_{tipo}",
                 "valor": base["val"] * factor,
                 "p95": base["std"] * factor,
-                "fairness": 0.05 + (seed % 10) / 1000.0,
-                "sched": sc_act if sc_act != "Sistema Base" else "scx_rusty",
+                "waste": 0.05 + (seed % 10) / 1000.0,
+                "sched": sc_act if sc_act != SISTEMA_BASE else "scx_rusty",
                 "modo": modo_act,
                 "mean_us": base["val"] * factor,
                 "std_us": base["std"] * factor,
@@ -142,6 +146,22 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             timeout = 30
         
         elif tipo == "compile":
+            if not shutil.which("make") or not shutil.which("gcc"):
+                if logs and tv_log:
+                    _log(tv_log, "make/gcc no instalados. Compilación paralela omitida.", nivel="warning")
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                return None
+            rt_dir = "/tmp/rt-tests"
+            if not os.path.isfile(f"{rt_dir}/Makefile"):
+                from utils.helpers import ruta_bundleada
+                bundle = ruta_bundleada("usr/share/reactor/rt-tests")
+                if bundle:
+                    rt_dir = bundle
+            if not os.path.isfile(f"{rt_dir}/Makefile"):
+                if logs and tv_log:
+                    _log(tv_log, "rt-tests no encontrado. Compilación paralela omitida.", nivel="warning")
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                return None
             # Compilación: -p (prepare) limpia el árbol ANTES de medir cada intento,
             # para que el cronómetro solo mida la compilación real.
             cpus = os.cpu_count() or 4
@@ -151,8 +171,8 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "-n", "parallel-make",
                 "-r", "5",
                 "--export-json", json_path,
-                "-p", "make -C /tmp/rt-tests clean >/dev/null 2>&1",
-                f"make -C /tmp/rt-tests cyclictest -j{cpus} >/dev/null 2>&1"
+                "-p", f"make -C {rt_dir} clean >/dev/null 2>&1",
+                f"make -C {rt_dir} cyclictest -j{cpus} >/dev/null 2>&1"
             ]
             nombre_test = "compilación paralela"
             timeout = 120
@@ -166,8 +186,8 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "-n", "foreground-under-load",
                 "-r", "15",
                 "--export-json", json_path,
-                "-p", "pkill -9 stress-ng 2>/dev/null; stress-ng --cpu $(nproc) --quiet & sleep 0.2",
-                "--cleanup", "pkill -9 stress-ng 2>/dev/null",
+                "-p", "pkill -9 stress-ng 2>/dev/null || true; stress-ng --cpu $(nproc) --temp-path /tmp --quiet 2>/dev/null & sleep 0.2",
+                "--cleanup", "pkill -9 stress-ng 2>/dev/null || true",
                 "python3 -c \"import hashlib;[hashlib.sha256(str(i).encode()).hexdigest() for i in range(5000)]\""
             ]
             nombre_test = "interactividad bajo carga"
@@ -176,7 +196,7 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
         else:
             shutil.rmtree(tmpdir, ignore_errors=True)
             if logs and tv_log:
-                _log(tv_log, f"Tipo de prueba híbrida desconocido: {tipo}", es_error=True)
+                _log(tv_log, f"Tipo de prueba híbrida desconocido: {tipo}", nivel="error")
             return None
         
         # ── Ejecutar ──
@@ -190,22 +210,22 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
         
         if not metricas or metricas.get('mean_us', 0) <= 0:
             if logs and tv_log:
-                _log(tv_log, "Resultado inválido (media <= 0)", es_error=True)
+                _log(tv_log, "Resultado inválido (media <= 0)", nivel="error")
             return None
         
         mean_us = metricas['mean_us']
         std_us = metricas.get('std_us', 0)
         runs = metricas.get('runs', 0)
         
-        # ── Calcular fairness ──
+        # Waste: coeficiente de variación (bajo = consistente)
         cv = (std_us / mean_us) if mean_us > 0 else 1.0
-        fairness = min(1.0, cv)
+        waste = min(1.0, cv)
         
         # ── Log de Resultados ──
         if logs and tv_log:
             _log(tv_log, f"Media: {mean_us:.1f} µs | Desv: {std_us:.1f} µs | Runs: {runs}")
             _log(tv_log, f"Rango: {metricas.get('min_us', 0):.1f} - {metricas.get('max_us', 0):.1f} µs")
-            _log(tv_log, f"RESUMEN: {mean_us:.1f} µs (media) | σ {std_us:.1f} µs | Consistencia: {(1-fairness)*100:.1f}%")
+            _log(tv_log, f"RESUMEN: {mean_us:.1f} µs (media) | σ {std_us:.1f} µs | Consistencia: {(1-waste)*100:.1f}%")
             _log(tv_log, f"Scheduler: {sc_act} | Modo: {modo_act}")
             _log(tv_log, "-" * 50)
         
@@ -213,7 +233,7 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             "tipo": f"latencia_{tipo}",
             "valor": mean_us,
             "p95": std_us,
-            "fairness": fairness,
+            "waste": waste,
             "sched": sc_act,
             "modo": modo_act,
             "mean_us": mean_us,
@@ -226,13 +246,13 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
     
     except FileNotFoundError:
         if logs and tv_log:
-            _log(tv_log, "Error: hyperfine no encontrado. Instálalo con: sudo eopkg install hyperfine", es_error=True)
+            _log(tv_log, "Error: hyperfine no encontrado. Instálalo con: sudo eopkg install hyperfine", nivel="error")
         return None
     except subprocess.TimeoutExpired:
         if logs and tv_log:
-            _log(tv_log, f"Prueba excedió el tiempo límite ({timeout}s).", es_error=True)
+            _log(tv_log, f"Prueba excedió el tiempo límite ({timeout}s).", nivel="error")
         return None
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError, ValueError, KeyError) as e:
         if logs and tv_log:
-            _log(tv_log, f"Error: {e}", es_error=True)
+            _log(tv_log, f"Error: {e}", nivel="error")
         return None

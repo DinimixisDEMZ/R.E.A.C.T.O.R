@@ -13,13 +13,14 @@ from gi.repository import Gtk, Adw, Gdk
 
 from core.database import consultar_historial, obtener_schedulers_historial
 from utils.helpers import generar_color_hash
+from utils.i18n import traducir
 from .constantes import _TIPOS_PRUEBA, _RANGOS_FECHA
 
 
 def _crear_pagina_resultados(win):
     pagina = Adw.PreferencesPage()
 
-    grupo_chips = Adw.PreferencesGroup(title="Planificadores")
+    grupo_chips = Adw.PreferencesGroup(title=traducir("Planificadores"))
     win._hist_chips_box = Gtk.FlowBox(
         selection_mode=Gtk.SelectionMode.NONE,
         row_spacing=4, column_spacing=4,
@@ -28,10 +29,10 @@ def _crear_pagina_resultados(win):
     )
     grupo_chips.add(win._hist_chips_box)
 
-    fecha_fila = Adw.ActionRow(title="Rango de Fechas")
+    fecha_fila = Adw.ActionRow(title=traducir("Rango de Fechas"))
     modelo_fechas = Gtk.StringList()
     for _, nombre in _RANGOS_FECHA:
-        modelo_fechas.append(nombre)
+        modelo_fechas.append(traducir(nombre))
     win._hist_combo_fecha = Gtk.DropDown(model=modelo_fechas, css_classes=["flat"], valign=Gtk.Align.CENTER)
     win._hist_combo_fecha.set_selected(1)
     win._hist_combo_fecha.connect("notify::selected", lambda *a: _refrescar_historial(win))
@@ -40,7 +41,7 @@ def _crear_pagina_resultados(win):
 
     pagina.add(grupo_chips)
 
-    grupo_resultados = Adw.PreferencesGroup(title="Resultados Históricos")
+    grupo_resultados = Adw.PreferencesGroup(title=traducir("Resultados Históricos"))
     win._hist_box_resultados = Gtk.Box(
         orientation=Gtk.Orientation.VERTICAL, spacing=12,
     )
@@ -137,7 +138,7 @@ def _refrescar_historial(win):
 
     for sched, items in grupos.items():
         r_sched, g_sched, b_sched = generar_color_hash(sched)
-        grupo = Adw.PreferencesGroup(title=sched)
+        grupo = Adw.PreferencesGroup(title=traducir(sched))
 
         caja_encabezado = Gtk.Box(spacing=6, margin_start=6, margin_bottom=4)
         punto = Gtk.DrawingArea()
@@ -167,12 +168,12 @@ def _refrescar_historial(win):
             else:
                 texto_valor = f"{valor:,.1f} pts"
 
-            fila = Adw.ActionRow(title=tipo_nombre, subtitle=marca_temporal)
+            fila = Adw.ActionRow(title=traducir(tipo_nombre), subtitle=marca_temporal)
             fila.add_suffix(Gtk.Label(label=texto_valor, valign=Gtk.Align.CENTER))
 
             tipo_ejecucion = r.get("run_type", "manual")
             icono_insignia = "view-refresh-symbolic" if tipo_ejecucion == "auto" else "applications-engineering-symbolic"
-            consejo_insignia = "Detección automática" if tipo_ejecucion == "auto" else "Benchmark manual"
+            consejo_insignia = traducir("Detección automática") if tipo_ejecucion == "auto" else traducir("Benchmark manual")
             insignia = Gtk.Image(
                 icon_name=icono_insignia, tooltip_text=consejo_insignia,
                 pixel_size=14, css_classes=["dim-label"],
@@ -190,4 +191,4 @@ def _refrescar_historial(win):
     while grupo and not isinstance(grupo, Adw.PreferencesGroup):
         grupo = grupo.get_parent()
     if grupo:
-        grupo.set_title(f"Resultados Históricos — {contador} encontrado(s)")
+        grupo.set_title(f"{traducir('Resultados Históricos')} — {contador} {traducir('encontrado(s)')}")

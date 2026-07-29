@@ -3,6 +3,7 @@ Pestaña de Controles: Estado actual, selección de scheduler/modo, acciones.
 """
 
 import math
+import subprocess
 import threading
 
 import gi
@@ -14,26 +15,30 @@ from core.database import activar_db_temporal, desactivar_db_temporal, obtener_i
 from ui.disponibilidad import recargar_disponibilidad_ui
 from utils.helpers import generar_color_hash
 from utils.iconos import establecer_iconos_idk
+from core.constantes import CARGANDO
+from utils.i18n import obtener_idiomas, establecer_idioma, establecer_usar_idioma_sistema, NOMBRES_IDIOMA, IDIOMA_ACTUAL, USAR_IDIOMA_SISTEMA, traducir
+from ui.verificacion import mostrar_verificacion
+from core.verificacion import marcar_verificacion_hecha
 
 
-def setup_controles_ui(win):
+def configurar_ui_controles(win):
     """Construye la interfaz de la pestaña Controles.
     
     Args:
         win: Instancia de VentanaSimple (la ventana principal)
     """
     pref_page = Adw.PreferencesPage()
-    grupo_estado = Adw.PreferencesGroup(title="Estado Actual")
-    win.fila_actual = Adw.ActionRow(title="Planificador en Ejecución")
-    win.boton_estado = Gtk.Button(label="Cargando...", valign=Gtk.Align.CENTER, css_classes=["flat"])
+    grupo_estado = Adw.PreferencesGroup(title=traducir("Estado Actual"))
+    win.fila_actual = Adw.ActionRow(title=traducir("Planificador en Ejecución"))
+    win.boton_estado = Gtk.Button(label=traducir(CARGANDO), valign=Gtk.Align.CENTER, css_classes=["flat"])
     win.fila_actual.add_suffix(win.boton_estado)
     grupo_estado.add(win.fila_actual)
 
-    grupo_config = Adw.PreferencesGroup(title="Configuración de SCX")
-    win.combo_schedulers = Adw.ComboRow(title="Seleccionar Planificador")
+    grupo_config = Adw.PreferencesGroup(title=traducir("Configuración de SCX"))
+    win.combo_schedulers = Adw.ComboRow(title=traducir("Seleccionar Planificador"))
     win.modelo_schedulers = Gtk.StringList()
     win.combo_schedulers.set_model(win.modelo_schedulers)
-    win.combo_modos = Adw.ComboRow(title="Seleccionar Modo")
+    win.combo_modos = Adw.ComboRow(title=traducir("Seleccionar Modo"))
     win.combo_modos.set_model(Gtk.StringList.new(["auto", "powersave", "gaming", "lowlatency", "server"]))
 
     win.combo_schedulers.connect("notify::selected-item", lambda *_: aplicar_cambio_scheduler(win))
@@ -42,9 +47,8 @@ def setup_controles_ui(win):
     grupo_config.add(win.combo_schedulers)
     grupo_config.add(win.combo_modos)
 
-    grupo_info = Adw.PreferencesGroup(title="Información del Planificador")
+    grupo_info = Adw.PreferencesGroup(title=traducir("Información del Planificador"))
     win._sched_info_card = Gtk.Frame(css_classes=["card"])
-    win._sched_info_card.set_visible(False)
     win._sched_info_card.set_visible(False)
     card_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=12, margin_end=12, margin_top=10, margin_bottom=10)
 
@@ -61,7 +65,7 @@ def setup_controles_ui(win):
 
     win._sched_info_desc = Gtk.Label(label="", xalign=0, wrap=True, css_classes=["dim-label"])
     card_box.append(win._sched_info_desc)
-    win._sched_info_link = Gtk.LinkButton(label="Abrir documentación »", uri="https://github.com/sched-ext/scx", halign=Gtk.Align.START)
+    win._sched_info_link = Gtk.LinkButton(label=traducir("Abrir documentación »"), uri="https://github.com/sched-ext/scx", halign=Gtk.Align.START)
     card_box.append(win._sched_info_link)
 
     win._sched_info_card.set_child(card_box)
@@ -74,10 +78,10 @@ def setup_controles_ui(win):
             desc, url = obtener_info_scheduler(name)
             win._sched_info_title.set_label(name)
             if desc:
-                win._sched_info_desc.set_label(desc)
+                win._sched_info_desc.set_label(traducir(desc))
                 win._sched_info_link.set_uri(url or "https://github.com/sched-ext/scx")
             else:
-                win._sched_info_desc.set_label("No hay información disponible para este planificador. Consultá la documentación oficial para más detalles.")
+                win._sched_info_desc.set_label(traducir("No hay información disponible para este planificador. Consultá la documentación oficial para más detalles."))
                 win._sched_info_link.set_uri("https://github.com/sched-ext/scx")
 
             r, g, b = generar_color_hash(name)
@@ -99,8 +103,20 @@ def setup_controles_ui(win):
     pref_page.add(grupo_config)
 
     # Sección de Depuración
-    grupo_dev = Adw.PreferencesGroup(title="Herramientas de Depuración")
-    fila_dev = Adw.ActionRow(title="Modo Simulación", subtitle="Prueba la UI sin hardware real ni scxctl")
+    grupo_dev = Adw.PreferencesGroup(title=traducir("Herramientas de Depuración"))
+    fila_verif = Adw.ActionRow(
+        title=traducir("Verificar Sistema"),
+        subtitle=traducir("Comprueba herramientas, comandos y dependencias")
+    )
+    btn_verif = Gtk.Button(label=traducir("Verificar"), valign=Gtk.Align.CENTER, css_classes=["pill"])
+    btn_verif.connect("clicked", lambda b: (
+        mostrar_verificacion(win),
+        marcar_verificacion_hecha()
+    ))
+    fila_verif.add_suffix(btn_verif)
+    grupo_dev.add(fila_verif)
+
+    fila_dev = Adw.ActionRow(title=traducir("Modo Simulación"), subtitle=traducir("Prueba la UI sin hardware real ni scxctl"))
     sw_dev = Gtk.Switch(active=win.modo_desarrollador, valign=Gtk.Align.CENTER)
 
     def _toggle_dev(sw, ps):
@@ -108,10 +124,10 @@ def setup_controles_ui(win):
         win.scx.modo_desarrollador = win.modo_desarrollador
         if win.modo_desarrollador:
             activar_db_temporal()
-            est = "ACTIVADO"
+            est = traducir("ACTIVADO")
         else:
             desactivar_db_temporal()
-            est = "DESACTIVADO"
+            est = traducir("DESACTIVADO")
         win.compatibles = None
         win.nav_disponibilidad.remove_css_class("pulse-warning")
         img = win.nav_disponibilidad.get_child().get_first_child()
@@ -119,11 +135,13 @@ def setup_controles_ui(win):
             for cls in ["success", "error"]:
                 img.remove_css_class(cls)
             img.set_from_icon_name("dialog-question-symbolic")
-        win.toast_overlay.add_toast(Adw.Toast.new(f"Modo Desarrollador: {est}"))
+        win.toast_overlay.add_toast(Adw.Toast.new(traducir("Modo Desarrollador: {}").format(est)))
         recargar_disponibilidad_ui(win)
-        if hasattr(win, '_refrescar_auto_schedulers'):
+        try:
             from ui.automatizacion import _refrescar_auto_schedulers
             _refrescar_auto_schedulers(win)
+        except ImportError:
+            pass
         win.sincronizar_sistema()
 
     sw_dev.connect("notify::active", _toggle_dev)
@@ -131,15 +149,15 @@ def setup_controles_ui(win):
     grupo_dev.add(fila_dev)
     pref_page.add(grupo_dev)
 
-    grupo_iconos = Adw.PreferencesGroup(title="Iconos")
-    fila_iconos = Adw.ActionRow(title="Usar iconos alternativos de GNOME", subtitle="Usa iconos del kit de desarrollo de GNOME en lugar de los del sistema")
+    grupo_iconos = Adw.PreferencesGroup(title=traducir("Iconos"))
+    fila_iconos = Adw.ActionRow(title=traducir("Usar iconos alternativos de GNOME"), subtitle=traducir("Usa iconos del kit de desarrollo de GNOME en lugar de los del sistema"))
     sw_iconos = Gtk.Switch(active=getattr(win, '_usar_idk', True), valign=Gtk.Align.CENTER)
 
     def _toggle_iconos(sw, ps):
         win._usar_idk = sw.get_active()
         establecer_iconos_idk(win._usar_idk)
         win.toast_overlay.add_toast(Adw.Toast.new(
-            "Iconos alternativos: ACTIVADO" if win._usar_idk else "Iconos del sistema: ACTIVADO"
+            traducir("Iconos alternativos: ACTIVADO") if win._usar_idk else traducir("Iconos del sistema: ACTIVADO")
         ))
 
     sw_iconos.connect("notify::active", _toggle_iconos)
@@ -147,12 +165,70 @@ def setup_controles_ui(win):
     grupo_iconos.add(fila_iconos)
     pref_page.add(grupo_iconos)
 
+    grupo_idioma = Adw.PreferencesGroup(title=traducir("Idioma"))
+    codigos_idiomas = obtener_idiomas()
+    nombres_idiomas = [
+        NOMBRES_IDIOMA.get(c.split("_")[0], c) for c in codigos_idiomas
+    ]
+
+    fila_usar_sistema = Adw.SwitchRow(
+        title=traducir("Usar idioma del sistema"),
+        subtitle=traducir("Si está activo, se usa el idioma del sistema operativo"),
+        active=USAR_IDIOMA_SISTEMA,
+    )
+
+    win.combo_idioma = Adw.ComboRow(
+        title=traducir("Idioma de la interfaz"),
+        subtitle=traducir("Requiere reinicio"),
+        model=Gtk.StringList.new(nombres_idiomas),
+        sensitive=not USAR_IDIOMA_SISTEMA,
+    )
+    for i, codigo in enumerate(codigos_idiomas):
+        if codigo == IDIOMA_ACTUAL:
+            win.combo_idioma.set_selected(i)
+            break
+
+    def _mostrar_dialogo_reinicio():
+        dialogo = Adw.AlertDialog(
+            heading=traducir("Cambio de idioma"),
+            body=traducir("Reiniciá la aplicación para que los cambios surtan efecto."),
+        )
+        dialogo.add_response("ok", traducir("OK"))
+        dialogo.set_default_response("ok")
+        dialogo.present(win)
+
+    def _al_cambiar_switch(*_):
+        usar = fila_usar_sistema.get_active()
+        win.combo_idioma.set_sensitive(not usar)
+        if usar:
+            establecer_usar_idioma_sistema(True)
+            for i, codigo in enumerate(codigos_idiomas):
+                if codigo == IDIOMA_ACTUAL:
+                    win.combo_idioma.set_selected(i)
+                    break
+            _mostrar_dialogo_reinicio()
+
+    def _al_cambiar_idioma(*_):
+        if fila_usar_sistema.get_active():
+            return
+        idx = win.combo_idioma.get_selected()
+        if idx == -1 or codigos_idiomas[idx] == IDIOMA_ACTUAL:
+            return
+        establecer_idioma(codigos_idiomas[idx])
+        _mostrar_dialogo_reinicio()
+
+    fila_usar_sistema.connect("notify::active", _al_cambiar_switch)
+    win.combo_idioma.connect("notify::selected", _al_cambiar_idioma)
+    grupo_idioma.add(fila_usar_sistema)
+    grupo_idioma.add(win.combo_idioma)
+    pref_page.add(grupo_idioma)
+
     header = Adw.HeaderBar()
 
     caja_gestion = Gtk.Box(spacing=6)
     for icon, acc, cls, tool in [
-        ("media-playback-start-symbolic", "start", "success", "Iniciar"),
-        ("media-playback-stop-symbolic", "stop", "destructive-action", "Detener")
+        ("media-playback-start-symbolic", "start", "success", traducir("Iniciar")),
+        ("media-playback-stop-symbolic", "stop", "destructive-action", traducir("Detener"))
     ]:
         b = Gtk.Button(icon_name=icon, tooltip_text=tool, css_classes=[cls] if cls else [])
         b.connect("clicked", lambda btn, a=acc: ejecutar_mantenimiento(win, btn, a))
@@ -160,7 +236,7 @@ def setup_controles_ui(win):
 
     header.pack_start(caja_gestion)
 
-    btn_actualizar = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text="Actualizar Estado", css_classes=["flat"])
+    btn_actualizar = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text=traducir("Actualizar Estado"), css_classes=["flat"])
     btn_actualizar.connect("clicked", lambda btn: ejecutar_mantenimiento(win, btn, "restart"))
     header.pack_end(btn_actualizar)
 
@@ -188,15 +264,15 @@ def ejecutar_mantenimiento(win, btn, acc):
                 if result.returncode != 0:
                     error_msg = result.stderr.strip().lower()
                     if acc == "start" and ("already" in error_msg or "running" in error_msg or not error_msg):
-                        mensaje = "Ya se está ejecutando"
+                        mensaje = traducir("Ya se está ejecutando")
                     elif acc == "stop" and ("not running" in error_msg or not error_msg):
-                        mensaje = "No hay ningún planificador activo"
+                        mensaje = traducir("No hay ningún planificador activo")
                     else:
-                        mensaje = result.stderr.strip() or "Comando fallido"
+                        mensaje = result.stderr.strip() or traducir("Comando fallido")
 
                     msafe = GLib.markup_escape_text(mensaje)
-                    GLib.idle_add(lambda m=msafe: win.toast_overlay.add_toast(Adw.Toast.new(f"Aviso: {m}")))
-            except Exception as e:
+                    GLib.idle_add(lambda m=msafe: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Aviso: {}").format(m))))
+            except (subprocess.SubprocessError, OSError) as e:
                 err_msg = GLib.markup_escape_text(str(e))
                 GLib.idle_add(lambda m=err_msg: win.toast_overlay.add_toast(Adw.Toast.new(f"Error: {m}")))
             finally:
@@ -232,13 +308,13 @@ def aplicar_cambio_scheduler(win, btn=None):
                 result = win.scx.ejecutar_con_sudo(cmd)
 
                 if result.returncode != 0:
-                    err_safe = GLib.markup_escape_text(result.stderr.strip() or 'Cambio fallido')
-                    GLib.idle_add(lambda m=err_safe: win.toast_overlay.add_toast(Adw.Toast.new(f"Error: {m}")))
+                    err_safe = GLib.markup_escape_text(result.stderr.strip() or traducir('Cambio fallido'))
+                    GLib.idle_add(lambda m=err_safe: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Error: {}").format(m))))
                 else:
-                    GLib.idle_add(lambda: win.toast_overlay.add_toast(Adw.Toast.new(f"Aplicado: {sched} [{modo}]")))
-            except Exception as e:
+                    GLib.idle_add(lambda: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Aplicado: {} [{}]").format(sched, modo))))
+            except (subprocess.SubprocessError, OSError) as e:
                 err_msg = GLib.markup_escape_text(str(e))
-                GLib.idle_add(lambda m=err_msg: win.toast_overlay.add_toast(Adw.Toast.new(f"Error: {m}")))
+                GLib.idle_add(lambda m=err_msg: win.toast_overlay.add_toast(Adw.Toast.new(traducir("Error: {}").format(m))))
             finally:
                 GLib.idle_add(win.sincronizar_sistema)
 

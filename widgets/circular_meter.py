@@ -12,6 +12,8 @@ from gi.repository import Gtk, Gdk, GLib, Adw
 
 import cairo
 
+from core.constantes import TEMP_UMBRAL_ESTABLE, TEMP_UMBRAL_ELEVADA, INTERVALO_FRAME_MS
+
 _COLOR_VERDE = (0.18, 0.76, 0.49)
 _COLOR_AMARILLO = (0.96, 0.76, 0.07)
 _COLOR_ROJO = (0.90, 0.33, 0.30)
@@ -31,9 +33,9 @@ def _color_para_fraccion(fraction):
 
 
 def _color_para_temperatura(temp_c):
-    if temp_c < 60:
+    if temp_c < TEMP_UMBRAL_ESTABLE:
         return _COLOR_VERDE
-    if temp_c < 75:
+    if temp_c < TEMP_UMBRAL_ELEVADA:
         return _COLOR_AMARILLO
     return _COLOR_ROJO
 
@@ -94,7 +96,7 @@ class CircularMeter(Gtk.Overlay):
     def _start_animation(self):
         if self._anim_id is not None:
             return
-        self._anim_id = GLib.timeout_add(16, self._anim_tick)
+        self._anim_id = GLib.timeout_add(INTERVALO_FRAME_MS, self._anim_tick)
 
     def _anim_tick(self):
         diff = self._target_fraction - self._fraction

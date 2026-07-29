@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS runs (
     scxctl_version TEXT,
     stressng_version TEXT,
     hyperfine_version TEXT,
-    run_type TEXT NOT NULL DEFAULT 'manual'
+    run_type TEXT NOT NULL DEFAULT 'manual',
+    log TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS results (
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS results (
     test_type TEXT NOT NULL,
     valor REAL NOT NULL,
     p95 REAL,
-    fairness REAL,
+    waste REAL,
     modo TEXT,
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
@@ -65,7 +66,7 @@ def _cmd_output(cmd, timeout=3):
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return r.stdout.strip().split('\n')[0] if r.returncode == 0 else None
-    except Exception:
+    except (subprocess.SubprocessError, OSError, IndexError):
         return None
 
 
@@ -122,19 +123,31 @@ def inicializar_db():
     conn = _get_conn()
     try:
         conn.executescript(_SCHEMA_SQL)
+        # Migración: renombrar columna fairness → waste en DBs existentes
+        try:
+            conn.execute("ALTER TABLE results RENAME COLUMN fairness TO waste")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        # Migración: agregar columna log a runs
+        try:
+            conn.execute("ALTER TABLE runs ADD COLUMN log TEXT DEFAULT ''")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
         sembrar_info_schedulers()
     finally:
         _close_conn(conn)
 
 
-def guardar_run(versiones, run_type="manual"):
+def guardar_run(versiones, run_type="manual", log=None):
     conn = _get_conn()
     try:
         cur = conn.execute(
-            "INSERT INTO runs (timestamp, kernel_version, scxctl_version, stressng_version, hyperfine_version, run_type) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO runs (timestamp, kernel_version, scxctl_version, stressng_version, hyperfine_version, run_type, log) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (time.time(), versiones.get("kernel", ""), versiones.get("scxctl"),
-             versiones.get("stressng"), versiones.get("hyperfine"), run_type)
+             versiones.get("stressng"), versiones.get("hyperfine"), run_type, log or "")
         )
         run_id = cur.lastrowid
         conn.commit()
@@ -147,11 +160,11 @@ def guardar_resultado(run_id, result):
     conn = _get_conn()
     try:
         conn.execute(
-            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, fairness, modo) "
+            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, waste, modo) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (run_id, result.get("timestamp", time.time()), result["sched"],
-             result["tipo"], result["valor"], result.get("p95"),
-             result.get("fairness"), result.get("modo"))
+            (run_id, result.get("timestamp", time.time()), result.get("sched", result.get("scheduler_name")),
+             result.get("tipo", result.get("test_type")), result["valor"], result.get("p95"),
+             result.get("waste"), result.get("modo"))
         )
         conn.commit()
     finally:
@@ -162,10 +175,10 @@ def guardar_resultados_batch(run_id, results):
     conn = _get_conn()
     try:
         conn.executemany(
-            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, fairness, modo) "
+            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, waste, modo) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [(run_id, r.get("timestamp", time.time()), r["sched"], r["tipo"],
-              r["valor"], r.get("p95"), r.get("fairness"), r.get("modo")) for r in results]
+              r["valor"], r.get("p95"), r.get("waste"), r.get("modo")) for r in results]
         )
         conn.commit()
     finally:
@@ -258,7 +271,7 @@ def consultar_runs_auto():
     try:
         rows = conn.execute(
             "SELECT id, timestamp, kernel_version, scxctl_version, stressng_version, "
-            "hyperfine_version, run_type FROM runs WHERE run_type = 'auto' "
+            "hyperfine_version, run_type, log FROM runs WHERE run_type IN ('auto', 'auto_parcial') "
             "ORDER BY timestamp ASC"
         ).fetchall()
         return [dict(r) for r in rows]
@@ -271,11 +284,20 @@ def cargar_resultados_de_run(run_id):
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT scheduler_name, test_type, valor, p95, fairness, modo, timestamp "
+            "SELECT scheduler_name, test_type, valor, p95, waste, modo, timestamp "
             "FROM results WHERE run_id = ? ORDER BY scheduler_name, test_type",
             (run_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        _close_conn(conn)
+
+
+def actualizar_log_run(run_id, log_text):
+    conn = _get_conn()
+    try:
+        conn.execute("UPDATE runs SET log = ? WHERE id = ?", (log_text, run_id))
+        conn.commit()
     finally:
         _close_conn(conn)
 

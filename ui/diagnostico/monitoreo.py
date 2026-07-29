@@ -13,6 +13,8 @@ from gi.repository import Gtk, Adw, GLib, Gdk
 
 from utils.helpers import obtener_color_tema
 from widgets.circular_meter import CircularMeter, _color_para_temperatura
+from core.constantes import CARGANDO
+from utils.i18n import traducir
 
 
 # ── Lectura de datos del Sistema (/proc) ──────────────────────────────────────
@@ -26,7 +28,7 @@ def obtener_uso_cpu_general():
             inactivo = float(partes[4]) + float(partes[5])  # idle + iowait
             no_inactivo = sum(float(x) for x in [partes[1], partes[2], partes[3], partes[6], partes[7], partes[8]])
             return inactivo + no_inactivo, inactivo
-    except Exception:
+    except (OSError, ValueError):
         pass
     return 0.0, 0.0
 
@@ -42,7 +44,7 @@ def obtener_uso_nucleos():
                     inactivo = float(partes[4]) + float(partes[5])
                     no_inactivo = sum(float(x) for x in [partes[1], partes[2], partes[3], partes[6], partes[7], partes[8]])
                     nucleos[nombre] = (inactivo + no_inactivo, inactivo)
-    except Exception:
+    except (OSError, ValueError):
         pass
     return nucleos
 
@@ -63,7 +65,7 @@ def obtener_uso_memoria():
             usado = total - disponible
             fraccion = usado / total
             return total / 1024 / 1024, usado / 1024 / 1024, fraccion
-    except Exception:
+    except (OSError, ValueError):
         pass
     return 0.0, 0.0, 0.0
 
@@ -73,7 +75,7 @@ def obtener_carga_media():
         with open("/proc/loadavg", "r") as f:
             partes = f.read().split()
         return partes[0], partes[1], partes[2]
-    except Exception:
+    except (OSError, ValueError):
         return "0.00", "0.00", "0.00"
 
 
@@ -90,7 +92,7 @@ def obtener_estadisticas_planif():
                     ejecutando = int(linea.split()[1])
                 elif linea.startswith("procs_blocked"):
                     bloqueado = int(linea.split()[1])
-    except Exception:
+    except (OSError, ValueError):
         pass
     return ctxt, ejecutando, bloqueado
 
@@ -108,7 +110,7 @@ def _leer_proc_cpuinfo():
                     props[k.strip()] = v.strip()
             if props:
                 info.append(props)
-    except Exception:
+    except (OSError, ValueError):
         pass
     return info
 
@@ -121,7 +123,7 @@ def actualizar_diagnostico_tiempo_real(win, controles):
         # Detener actualización si la ventana ya no está visible o fue destruida
         if not win or not win.get_visible():
             return False
-    except Exception:
+    except (OSError, AttributeError):
         return False
 
     # Evitar consumo innecesario si no estamos en la pestaña Diagnóstico
@@ -130,14 +132,14 @@ def actualizar_diagnostico_tiempo_real(win, controles):
 
     # 1. Carga General de CPU
     t_total, t_inactivo = obtener_uso_cpu_general()
-    if win._prev_cpu_total is not None:
-        d_total = t_total - win._prev_cpu_total
-        d_inactivo = t_inactivo - win._prev_cpu_idle
+    if win.monitor_state.prev_cpu_total is not None:
+        d_total = t_total - win.monitor_state.prev_cpu_total
+        d_inactivo = t_inactivo - win.monitor_state.prev_cpu_idle
         if d_total > 0:
             uso_cpu = (d_total - d_inactivo) / d_total
             controles["medidor_cpu"].update(uso_cpu, f"{uso_cpu * 100:.1f}%")
-    win._prev_cpu_total = t_total
-    win._prev_cpu_idle = t_inactivo
+    win.monitor_state.prev_cpu_total = t_total
+    win.monitor_state.prev_cpu_idle = t_inactivo
 
     # 2. Uso de Memoria
     m_total, m_usado, m_fraccion = obtener_uso_memoria()
@@ -149,7 +151,7 @@ def actualizar_diagnostico_tiempo_real(win, controles):
     if t_temp > 0:
         controles["medidor_temp"].update(t_temp / 100.0, f"{t_temp:.1f} °C", color=_color_para_temperatura(t_temp))
     else:
-        controles["medidor_temp"].update(0.0, "N/D")
+        controles["medidor_temp"].update(0.0, traducir("N/D"))
 
     # 4. Planificador Activo
     nombre_sc, modo_sc = win.scx.obtener_estado()
@@ -160,14 +162,14 @@ def actualizar_diagnostico_tiempo_real(win, controles):
         btn_planif.set_label(f"{nombre_sc} [{modo_sc}]")
         btn_planif.add_css_class("success")
     else:
-        btn_planif.set_label("Sistema Base (Default)")
+        btn_planif.set_label(traducir("Planificador del Sistema"))
         btn_planif.add_css_class("destructive-action")
 
     # 5. Carga de Cores Individuales
     estadisticas_nucleos = obtener_uso_nucleos()
     for nombre, (c_total, c_inactivo) in estadisticas_nucleos.items():
-        if nombre in win._prev_cores:
-            total_anterior, inactivo_anterior = win._prev_cores[nombre]
+        if nombre in win.monitor_state.prev_cores:
+            total_anterior, inactivo_anterior = win.monitor_state.prev_cores[nombre]
             d_total = c_total - total_anterior
             d_inactivo = c_inactivo - inactivo_anterior
             if d_total > 0:
@@ -175,19 +177,19 @@ def actualizar_diagnostico_tiempo_real(win, controles):
                 if nombre in controles["barras_nucleo"]:
                     controles["barras_nucleo"][nombre].set_fraction(uso_nucleo)
                     controles["etiquetas_nucleo"][nombre].set_label(f"{int(uso_nucleo * 100)}%")
-        win._prev_cores[nombre] = (c_total, c_inactivo)
+        win.monitor_state.prev_cores[nombre] = (c_total, c_inactivo)
 
     # 6. Estadísticas de Planificación
     ctxt, ejecutando, bloqueado = obtener_estadisticas_planif()
     ahora_t = time.time()
-    if win._prev_ctxt is not None and win._prev_ctxt_time is not None:
-        dt = ahora_t - win._prev_ctxt_time
+    if win.monitor_state.prev_ctxt is not None and win.monitor_state.prev_ctxt_time is not None:
+        dt = ahora_t - win.monitor_state.prev_ctxt_time
         if dt > 0:
-            tasa_ctxt = (ctxt - win._prev_ctxt) / dt
+            tasa_ctxt = (ctxt - win.monitor_state.prev_ctxt) / dt
             # Mostrar con formato local (puntos de miles)
-            controles["lbl_tasa_ctxt"].set_label(f"{int(tasa_ctxt):,}".replace(",", ".") + " ctxt/s")
-    win._prev_ctxt = ctxt
-    win._prev_ctxt_time = ahora_t
+            controles["lbl_tasa_ctxt"].set_label(f"{int(tasa_ctxt):,}".replace(",", ".") + traducir(" ctxt/s"))
+    win.monitor_state.prev_ctxt = ctxt
+    win.monitor_state.prev_ctxt_time = ahora_t
 
     controles["lbl_ctxt_total"].set_label(f"{ctxt:,}".replace(",", "."))
     controles["lbl_procs_ejecutando"].set_label(str(ejecutando))
@@ -255,17 +257,17 @@ def configurar_pestana_monitor(win):
     )
 
     # ── Estado de Monitoreo en el Objeto Window ──
-    win._prev_cpu_total = None
-    win._prev_cpu_idle = None
-    win._prev_cores = {}
-    win._prev_ctxt = None
-    win._prev_ctxt_time = None
+    win.monitor_state.prev_cpu_total = None
+    win.monitor_state.prev_cpu_idle = None
+    win.monitor_state.prev_cores = {}
+    win.monitor_state.prev_ctxt = None
+    win.monitor_state.prev_ctxt_time = None
 
     # ── 1. Medidores en Tiempo Real (Grandes, al principio) ──
     grupo_medidores = Adw.PreferencesGroup()
-    medidor_cpu = CircularMeter("power-profile-performance-symbolic", "CPU", size=90)
-    medidor_mem = CircularMeter("drive-harddisk-symbolic", "RAM", size=90)
-    medidor_temp = CircularMeter("weather-clear-symbolic", "Temp", size=90)
+    medidor_cpu = CircularMeter("power-profile-performance-symbolic", traducir("CPU"), size=90)
+    medidor_mem = CircularMeter("drive-harddisk-symbolic", traducir("RAM"), size=90)
+    medidor_temp = CircularMeter("weather-clear-symbolic", traducir("Temp"), size=90)
 
     caja_medidores = Gtk.Box(spacing=24, halign=Gtk.Align.CENTER, margin_top=12, margin_bottom=12)
     caja_medidores.append(medidor_cpu)
@@ -290,21 +292,21 @@ def configurar_pestana_monitor(win):
             modelo = primero.get('model name', '')
             if modelo:
                 win.fila_titulo_cpu.set_title(f"<b>{modelo}</b>")
-                win.fila_titulo_cpu.set_subtitle("Información y Diagnóstico de la CPU")
+                win.fila_titulo_cpu.set_subtitle(traducir("Información y Diagnóstico de la CPU"))
                 win.fila_titulo_cpu.set_use_markup(True)
-        except Exception:
+        except (OSError, ValueError):
             pass
         return False
     GLib.idle_add(_poblar_cpu)
 
     # ── 3. Monitoreo en Tiempo Real ──
     grupo_rt = Adw.PreferencesGroup(
-        title="Monitoreo en Tiempo Real",
-        description="Estado, carga del sistema e integridad térmica."
+        title=traducir("Monitoreo en Tiempo Real"),
+        description=traducir("Estado, carga del sistema e integridad térmica.")
     )
 
-    fila_planif = Adw.ActionRow(title="Planificador Activo")
-    lbl_valor_planif = Gtk.Button(label="Cargando...", valign=Gtk.Align.CENTER, css_classes=["flat"])
+    fila_planif = Adw.ActionRow(title=traducir("Planificador Activo"))
+    lbl_valor_planif = Gtk.Button(label=traducir(CARGANDO), valign=Gtk.Align.CENTER, css_classes=["flat"])
     fila_planif.add_suffix(lbl_valor_planif)
     grupo_rt.add(fila_planif)
 
@@ -329,14 +331,14 @@ def configurar_pestana_monitor(win):
         card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         card.add_css_class("core-card")
 
-        lbl_num = Gtk.Label(label=f"CPU {nombre[3:]}")
+        lbl_num = Gtk.Label(label=traducir("CPU {}").format(nombre[3:]))
         lbl_num.add_css_class("core-label")
         lbl_num.set_halign(Gtk.Align.START)
 
         barra = Gtk.ProgressBar(valign=Gtk.Align.CENTER, hexpand=True)
         barra.add_css_class("core-progress")
 
-        lbl_pct = Gtk.Label(label="0%")
+        lbl_pct = Gtk.Label(label=traducir("0%"))
         lbl_pct.add_css_class("core-pct-label")
         lbl_pct.set_halign(Gtk.Align.END)
 
@@ -350,8 +352,8 @@ def configurar_pestana_monitor(win):
 
     if nombres_nucleos:
         expandidor_nucleos = Adw.ExpanderRow(
-            title="Carga por Núcleo de Procesamiento",
-            subtitle="Uso en tiempo real de cada CPU lógica"
+            title=traducir("Carga por Núcleo de Procesamiento"),
+            subtitle=traducir("Uso en tiempo real de cada CPU lógica")
         )
         contenedor_caja_flujo = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -365,35 +367,35 @@ def configurar_pestana_monitor(win):
 
     # ── 3. Métricas de Planificación ──
     grupo_planif = Adw.PreferencesGroup(
-        title="Métricas de Planificación",
-        description="Agilidad y comportamiento de la cola de tareas del Kernel Linux."
+        title=traducir("Métricas de Planificación"),
+        description=traducir("Agilidad y comportamiento de la cola de tareas del Kernel Linux.")
     )
 
-    fila_carga_media = Adw.ActionRow(title="Carga Media (Load Average)")
-    lbl_carga_media = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
+    fila_carga_media = Adw.ActionRow(title=traducir("Carga Media (Load Average)"))
+    lbl_carga_media = Gtk.Label(label=traducir(CARGANDO), valign=Gtk.Align.CENTER)
     fila_carga_media.add_suffix(lbl_carga_media)
     grupo_planif.add(fila_carga_media)
 
-    fila_tasa_ctxt = Adw.ActionRow(title="Cambios de Contexto (Context Switches)")
-    lbl_tasa_ctxt = Gtk.Label(label="Calculando...", valign=Gtk.Align.CENTER)
+    fila_tasa_ctxt = Adw.ActionRow(title=traducir("Cambios de Contexto (Context Switches)"))
+    lbl_tasa_ctxt = Gtk.Label(label=traducir("Calculando..."), valign=Gtk.Align.CENTER)
     fila_tasa_ctxt.add_suffix(lbl_tasa_ctxt)
     grupo_planif.add(fila_tasa_ctxt)
 
-    fila_ctxt_total = Adw.ActionRow(title="Cambios de Contexto Totales (desde arranque)")
-    lbl_ctxt_total = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
+    fila_ctxt_total = Adw.ActionRow(title=traducir("Cambios de Contexto Totales (desde arranque)"))
+    lbl_ctxt_total = Gtk.Label(label=traducir(CARGANDO), valign=Gtk.Align.CENTER)
     fila_ctxt_total.add_suffix(lbl_ctxt_total)
     grupo_planif.add(fila_ctxt_total)
 
-    fila_procs_ejecutando = Adw.ActionRow(title="Tareas en Ejecución Activa")
-    lbl_procs_ejecutando = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
+    fila_procs_ejecutando = Adw.ActionRow(title=traducir("Tareas en Ejecución Activa"))
+    lbl_procs_ejecutando = Gtk.Label(label=traducir(CARGANDO), valign=Gtk.Align.CENTER)
     fila_procs_ejecutando.add_suffix(lbl_procs_ejecutando)
     grupo_planif.add(fila_procs_ejecutando)
 
     fila_procs_bloqueados = Adw.ActionRow(
-        title="Tareas Bloqueadas (Esperando I/O)",
-        subtitle="Un valor elevado indica cuellos de botella en el disco o red"
+        title=traducir("Tareas Bloqueadas (Esperando I/O)"),
+        subtitle=traducir("Un valor elevado indica cuellos de botella en el disco o red")
     )
-    lbl_procs_bloqueados = Gtk.Label(label="Cargando...", valign=Gtk.Align.CENTER)
+    lbl_procs_bloqueados = Gtk.Label(label=traducir(CARGANDO), valign=Gtk.Align.CENTER)
     fila_procs_bloqueados.add_suffix(lbl_procs_bloqueados)
     grupo_planif.add(fila_procs_bloqueados)
 
@@ -401,41 +403,41 @@ def configurar_pestana_monitor(win):
 
     # ── Eventos del Scheduler (sysfs, sin root) ──
     grupo_eventos_scx = Adw.PreferencesGroup(
-        title="Eventos de sched_ext",
-        description="Contadores del planificador BPF activo — lecturas de /sys/kernel/sched_ext/"
+        title=traducir("Eventos de sched_ext"),
+        description=traducir("Contadores del planificador BPF activo — lecturas de /sys/kernel/sched_ext/")
     )
     try:
         ops = open("/sys/kernel/sched_ext/root/ops").read().strip()
-    except Exception:
+    except (OSError, ValueError):
         ops = "—"
-    fila_nombre_scx = Adw.ActionRow(title="Planificador Activo")
+    fila_nombre_scx = Adw.ActionRow(title=traducir("Planificador Activo"))
     lbl_nombre_scx = Gtk.Label(label=ops, valign=Gtk.Align.CENTER, css_classes=["caption-heading"])
     fila_nombre_scx.add_suffix(lbl_nombre_scx)
     grupo_eventos_scx.add(fila_nombre_scx)
 
     try:
         estado = open("/sys/kernel/sched_ext/state").read().strip()
-    except Exception:
+    except (OSError, ValueError):
         estado = "—"
-    fila_estado_scx = Adw.ActionRow(title="Estado")
+    fila_estado_scx = Adw.ActionRow(title=traducir("Estado"))
     lbl_estado_scx = Gtk.Label(label=estado, valign=Gtk.Align.CENTER)
     fila_estado_scx.add_suffix(lbl_estado_scx)
     grupo_eventos_scx.add(fila_estado_scx)
 
     try:
         secuencia = open("/sys/kernel/sched_ext/enable_seq").read().strip()
-    except Exception:
+    except (OSError, ValueError):
         secuencia = "—"
-    fila_secuencia_scx = Adw.ActionRow(title="Secuencia de Activación")
+    fila_secuencia_scx = Adw.ActionRow(title=traducir("Secuencia de Activación"))
     lbl_secuencia_scx = Gtk.Label(label=secuencia, valign=Gtk.Align.CENTER)
     fila_secuencia_scx.add_suffix(lbl_secuencia_scx)
     grupo_eventos_scx.add(fila_secuencia_scx)
 
     try:
         rechazado = open("/sys/kernel/sched_ext/nr_rejected").read().strip()
-    except Exception:
+    except (OSError, ValueError):
         rechazado = "—"
-    fila_rechazados_scx = Adw.ActionRow(title="Tareas Rechazadas")
+    fila_rechazados_scx = Adw.ActionRow(title=traducir("Tareas Rechazadas"))
     lbl_rechazados_scx = Gtk.Label(label=rechazado, valign=Gtk.Align.CENTER)
     fila_rechazados_scx.add_suffix(lbl_rechazados_scx)
     grupo_eventos_scx.add(fila_rechazados_scx)
@@ -455,7 +457,7 @@ def configurar_pestana_monitor(win):
             lbl = Gtk.Label(label=valor_ev, valign=Gtk.Align.CENTER, css_classes=["monospace"])
             fila.add_suffix(lbl)
             grupo_eventos_scx.add(fila)
-    except Exception:
+    except (OSError, ValueError):
         pass
 
     pagina_pref.add(grupo_eventos_scx)

@@ -13,6 +13,8 @@ import subprocess
 import time
 import tempfile
 
+from core.constantes import SISTEMA_BASE
+
 from utils.helpers import log as _log, limpiar_texto as _limpiar_texto
 
 
@@ -60,7 +62,7 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
     
     Args:
         tipo: "cpu" (latencia), "threads" (multitarea), "memory" (eficiencia)
-        scx_manager: Instancia de ScxManager para consultar el estado
+        scx_manager: Instancia de GestorScx para consultar el estado
         tv_log: TextView para logging (puede ser None)
         tiempo: Duración en segundos
         logs: Si True, escribe en el log
@@ -72,11 +74,11 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
     try:
         time.sleep(0.3)
         sc_act, modo_act = scx_manager.obtener_estado()
-        sc_act = sc_act or "Sistema Base"
+        sc_act = sc_act or SISTEMA_BASE
         modo_act = modo_act or "default"
         
         if logs and tv_log:
-            _log(tv_log, f"INICIANDO: {tipo.upper()} ({sc_act} [{modo_act}])", True)
+            _log(tv_log, f"INICIANDO: {tipo.upper()} ({sc_act} [{modo_act}])", nivel="title")
         
         cores = os.cpu_count() or 4
         
@@ -95,8 +97,8 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
                 "tipo": tipo,
                 "valor": base["val"] * factor,
                 "p95": base["p95"] * (0.8 + (seed % 40) / 100.0),
-                "fairness": base["fair"] * (0.9 + (seed % 20) / 100.0),
-                "sched": sc_act if sc_act != "Sistema Base" else "scx_rusty",
+                "waste": base["fair"] * (0.9 + (seed % 20) / 100.0),
+                "sched": sc_act if sc_act != SISTEMA_BASE else "scx_rusty",
                 "modo": modo_act
             }
         
@@ -104,13 +106,15 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         yaml_path = tempfile.mktemp(suffix=".yaml", prefix="scxctl_bench_")
         
         # 1. Latencia (Context Switching): Mide la velocidad del scheduler para cambiar entre tareas
+        _TEMP_PATH = ["--temp-path", "/tmp"]
         if tipo == "cpu":
             cmd = [
                 "stress-ng",
                 "--switch", str(cores),
                 "--timeout", f"{tiempo}s",
                 "--metrics-brief",
-                "--yaml", yaml_path
+                "--yaml", yaml_path,
+                *_TEMP_PATH,
             ]
         
         # 2. Multitarea (Carga CPU): Simula trabajo real de CPU con operaciones de matrices
@@ -121,7 +125,8 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
                 "--cpu-method", "matrixprod",
                 "--timeout", f"{tiempo}s",
                 "--metrics-brief",
-                "--yaml", yaml_path
+                "--yaml", yaml_path,
+                *_TEMP_PATH,
             ]
         
         # 3. Eficiencia (Mutex/Contención): Muchos hilos compiten por recursos compartidos
@@ -131,11 +136,12 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
                 "--mutex", str(cores * 2),
                 "--timeout", f"{tiempo}s",
                 "--metrics-brief",
-                "--yaml", yaml_path
+                "--yaml", yaml_path,
+                *_TEMP_PATH,
             ]
         else:
             if logs and tv_log:
-                _log(tv_log, f"Tipo de prueba desconocido: {tipo}", es_error=True)
+                _log(tv_log, f"Tipo de prueba desconocido: {tipo}", nivel="error")
             return None
         
         # ── Ejecutar ──
@@ -150,7 +156,8 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
             if res.stdout:
                 limpia_out = _limpiar_texto(res.stdout)
                 for linea in (limpia_out or "").splitlines()[:200]:
-                    _log(tv_log, f"STDOUT: {linea}")
+                    if any(p in linea.lower() for p in ("successful", "failed", "error", "warning", "cannot", "signal", "killed", "passed", "not enough")):
+                        _log(tv_log, f"STDOUT: {linea}")
             if res.stderr:
                 limpia_err = _limpiar_texto(res.stderr)
                 for linea in (limpia_err or "").splitlines()[:200]:
@@ -158,7 +165,7 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         
         if res.returncode != 0 and "passed:" not in res.stderr:
             if logs and tv_log:
-                _log(tv_log, f"Error en stress-ng: {res.stderr.strip()}", es_error=True)
+                _log(tv_log, f"Error en stress-ng: {res.stderr.strip()}", nivel="error")
             return None
         
         # ── Parsear Resultados YAML ──
@@ -168,17 +175,16 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
             try:
                 with open(yaml_path, 'r') as f:
                     contenido = f.read()
-                if logs and tv_log:
-                    _log(tv_log, "Contenido YAML (limpio, primeras 2000 chars):")
-                    preview = _limpiar_texto(contenido)[:2000]
-                    for linea in preview.splitlines()[:200]:
-                        _log(tv_log, linea)
                 metricas = _parsear_yaml_simple(contenido)
                 if logs and tv_log:
-                    _log(tv_log, f"Métricas parseadas: {metricas}")
-            except Exception as e:
+                    for k, v in metricas.items():
+                        if isinstance(v, float):
+                            _log(tv_log, f"  {k:35s} {v:>12,.2f}")
+                        else:
+                            _log(tv_log, f"  {k:35s} {str(v):>12s}")
+            except (OSError, ValueError) as e:
                 if logs and tv_log:
-                    _log(tv_log, f"Error leyendo YAML: {e}", es_error=True)
+                    _log(tv_log, f"Error leyendo YAML: {e}", nivel="error")
             finally:
                 try:
                     os.unlink(yaml_path)
@@ -199,7 +205,12 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
 
         # Log intermedio de variables extraídas
         if logs and tv_log:
-            _log(tv_log, f"Intermedios: bogo_ops={bogo_ops}, ops_real={ops_real}, ops_usr_sys={ops_usr_sys}, cpu_usage={cpu_usage}, wall_time={wall_time}, ns_per_switch={ns_per_switch}")
+            _log(tv_log, f"  bogo_ops:        {bogo_ops:>12,.2f}")
+            _log(tv_log, f"  ops_real:        {ops_real:>12,.2f}")
+            _log(tv_log, f"  ops_usr_sys:     {ops_usr_sys:>12,.2f}")
+            _log(tv_log, f"  cpu_usage:       {cpu_usage:>12.1f}%")
+            _log(tv_log, f"  wall_time:       {wall_time:>12.2f}s")
+            _log(tv_log, f"  ns_per_switch:   {ns_per_switch:>12,.2f}")
         
         # P95 equivalente: latencia directa cuando está disponible
         if tipo == "cpu" and ns_per_switch > 0:
@@ -211,17 +222,16 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         else:
             p95 = 1.0
         
-        # Fairness: Eficiencia del CPU (100% = perfecta utilización)
-        # Invertido: fairness=0 es perfecto, >0 indica desperdicio
+        # Waste: ratio de desperdicio de CPU (0.0 = uso perfecto, >0 = desperdicio)
         if cpu_usage > 0:
-            fairness = max(0.0, (100.0 - cpu_usage) / 100.0)
+            waste = max(0.0, (100.0 - cpu_usage) / 100.0)
         else:
-            fairness = 0.5
+            waste = 0.5
         
         # Protección contra datos inválidos
         if valor <= 0:
             if logs and tv_log:
-                _log(tv_log, "Resultado inválido (0 operaciones)", es_error=True)
+                _log(tv_log, "Resultado inválido (0 operaciones)", nivel="error")
             return None
         
         # ── Log de Resultados ──
@@ -237,7 +247,7 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
                 un_log = "pts (Eficacia)"
 
             _log(tv_log, f"RESUMEN: {val_log:,.2f} {un_log} | Latencia: {p95:.2f}µs | Eficiencia CPU: {cpu_usage:.1f}%")
-            _log(tv_log, f"Fairness: {fairness:.3f} | Scheduler: {sc_act} | Modo: {modo_act}")
+            _log(tv_log, f"Waste: {waste:.3f} | Scheduler: {sc_act} | Modo: {modo_act}")
             _log(tv_log, "-" * 50)
         
         # Añadir datos crudos y metadatos al resultado para análisis posterior
@@ -245,7 +255,7 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
             "tipo": tipo,
             "valor": valor,
             "p95": p95,
-            "fairness": fairness,
+            "waste": waste,
             "sched": sc_act,
             "modo": modo_act,
             "metrics": metricas,
@@ -263,14 +273,14 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
     
     except FileNotFoundError:
         if logs and tv_log:
-            _log(tv_log, "Error: stress-ng no encontrado. Instálalo con tu gestor de paquetes (ej: 'sudo eopkg install stress-ng').", es_error=True)
+            _log(tv_log, "Error: stress-ng no encontrado. Instálalo con tu gestor de paquetes (ej: 'sudo eopkg install stress-ng').", nivel="error")
         return None
     except subprocess.TimeoutExpired:
         if logs and tv_log:
-            _log(tv_log, "Prueba excedió el tiempo límite.", es_error=True)
+            _log(tv_log, "Prueba excedió el tiempo límite.", nivel="error")
         return None
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
         if logs and tv_log:
-            _log(tv_log, f"Error: {e}", es_error=True)
+            _log(tv_log, f"Error: {e}", nivel="error")
         return None
 

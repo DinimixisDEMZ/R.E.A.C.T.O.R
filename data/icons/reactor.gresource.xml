@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/reactor/icons">
+    <file>Adwaita/scalable/actions/dialog-error-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/dialog-question-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/document-open-recent-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/go-next-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/go-previous-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/help-about-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/media-playback-start-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/media-playback-stop-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/object-select-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/sonar-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/system-run-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/view-continuous-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/view-list-bullet-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/view-list-symbolic.svg</file>
+    <file>Adwaita/scalable/actions/view-refresh-symbolic.svg</file>
+    <file>Adwaita/scalable/apps/reactor.svg</file>
+    <file>Adwaita/scalable/categories/applications-engineering-symbolic.svg</file>
+    <file>Adwaita/scalable/categories/applications-utilities-symbolic.svg</file>
+    <file>Adwaita/scalable/categories/preferences-other-symbolic.svg</file>
+    <file>Adwaita/scalable/categories/preferences-system-symbolic.svg</file>
+    <file>Adwaita/scalable/devices/computer-symbolic.svg</file>
+    <file>Adwaita/scalable/devices/drive-harddisk-symbolic.svg</file>
+    <file>Adwaita/scalable/devices/input-mouse-symbolic.svg</file>
+    <file>Adwaita/scalable/legacy/accessories-calculator-symbolic.svg</file>
+    <file>Adwaita/scalable/legacy/utilities-terminal-symbolic.svg</file>
+    <file>Adwaita/scalable/legacy/web-browser-symbolic.svg</file>
+    <file>Adwaita/scalable/mimetypes/application-x-executable-symbolic.svg</file>
+    <file>Adwaita/scalable/mimetypes/application-x-firmware.svg</file>
+    <file>Adwaita/scalable/mimetypes/application-x-firmware-symbolic.svg</file>
+    <file>Adwaita/scalable/mimetypes/x-office-calendar-symbolic.svg</file>
+    <file>Adwaita/scalable/places/network-server-symbolic.svg</file>
+    <file>Adwaita/scalable/places/start-here-symbolic.svg</file>
+    <file>Adwaita/scalable/places/user-trash-symbolic.svg</file>
+    <file>Adwaita/scalable/status/avatar-default-symbolic.svg</file>
+    <file>Adwaita/scalable/status/click-symbolic.svg</file>
+    <file>Adwaita/scalable/status/dialog-information-symbolic.svg</file>
+    <file>Adwaita/scalable/status/dialog-password-symbolic.svg</file>
+    <file>Adwaita/scalable/status/dialog-warning-symbolic.svg</file>
+    <file>Adwaita/scalable/status/emblem-ok-symbolic.svg</file>
+    <file>Adwaita/scalable/status/emblem-synchronizing-symbolic.svg</file>
+    <file>Adwaita/scalable/status/fire-symbolic.svg</file>
+    <file>Adwaita/scalable/status/power-profile-performance-symbolic.svg</file>
+    <file>Adwaita/scalable/status/preferences-system-time-symbolic.svg</file>
+    <file>Adwaita/scalable/status/software-update-urgent-symbolic.svg</file>
+    <file>Adwaita/scalable/status/starred-symbolic.svg</file>
+    <file>Adwaita/scalable/status/temperature-symbolic.svg</file>
+    <file>Adwaita/scalable/status/weather-clear-night-symbolic.svg</file>
+    <file>Adwaita/scalable/status/weather-clear-symbolic.svg</file>
+    <file>Adwaita/scalable/status/weather-windy-symbolic.svg</file>
+    <file>Adwaita/scalable/status/wind-symbolic.svg</file>
+  </gresource>
+</gresources>

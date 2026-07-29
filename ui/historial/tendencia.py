@@ -11,7 +11,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, Gdk, Gio, GObject
 
 from core.database import consultar_tendencia
+from core.constantes import INTERVALO_FRAME_MS
 from utils.helpers import generar_color_hash
+from utils.i18n import traducir
 from .constantes import _TIPOS_PRUEBA, _RANGOS_FECHA
 
 
@@ -63,24 +65,24 @@ def _calcular_desv(valores):
 def _crear_pagina_tendencia(win):
     pagina = Adw.PreferencesPage()
 
-    grupo = Adw.PreferencesGroup(title="Tendencia de Rendimiento")
+    grupo = Adw.PreferencesGroup(title=traducir("Tendencia de Rendimiento"))
     pagina.add(grupo)
 
     # ── Filtros ──
-    filtro_fecha_fila = Adw.ActionRow(title="Rango de Fechas")
+    filtro_fecha_fila = Adw.ActionRow(title=traducir("Rango de Fechas"))
     modelo = Gtk.StringList()
     for _, nombre in _RANGOS_FECHA:
-        modelo.append(nombre)
+        modelo.append(traducir(nombre))
     win._hist_trend_combo = Gtk.DropDown(model=modelo, css_classes=["flat"], valign=Gtk.Align.CENTER)
     win._hist_trend_combo.set_selected(1)
     win._hist_trend_combo.connect("notify::selected", lambda *a: _refrescar_tendencia(win))
     filtro_fecha_fila.add_suffix(win._hist_trend_combo)
     grupo.add(filtro_fecha_fila)
 
-    filtro_test_fila = Adw.ActionRow(title="Tipo de Benchmark")
+    filtro_test_fila = Adw.ActionRow(title=traducir("Tipo de Benchmark"))
     modelo_test = Gtk.StringList()
     for _, nombre in _TIPOS_PRUEBA:
-        modelo_test.append(nombre)
+        modelo_test.append(traducir(nombre))
     win._hist_trend_test_type = Gtk.DropDown(model=modelo_test, css_classes=["flat"], valign=Gtk.Align.CENTER)
     win._hist_trend_test_type.set_selected(0)
     win._hist_trend_test_type.connect("notify::selected", lambda *a: _refrescar_tendencia(win))
@@ -184,11 +186,11 @@ def _refrescar_tendencia(win):
         chip.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
         chip.set_has_tooltip(True)
         chip.set_tooltip_text(
-            f"Promedio: {est.get('avg', 0):,.1f}\n"
-            f"Mínimo:   {est.get('min', 0):,.1f}\n"
-            f"Máximo:   {est.get('max', 0):,.1f}\n"
-            f"Último:   {est.get('last', 0):,.1f}\n"
-            f"Tests:    {est.get('count', 0)}"
+            f"{traducir('Promedio')}: {est.get('avg', 0):,.1f}\n"
+            f"{traducir('Mínimo')}:   {est.get('min', 0):,.1f}\n"
+            f"{traducir('Máximo')}:   {est.get('max', 0):,.1f}\n"
+            f"{traducir('Último')}:   {est.get('last', 0):,.1f}\n"
+            f"{traducir('Tests')}:    {est.get('count', 0)}"
         )
 
         punto = Gtk.DrawingArea()
@@ -259,11 +261,11 @@ def _refrescar_tendencia(win):
         peor_planif = "—"
 
     for icon, texto in [
-        ("view-list-symbolic", f"{total_pruebas} tests"),
-        ("system-run-symbolic", f"{n_planificadores} planificadores"),
+        ("view-list-symbolic", f"{total_pruebas} {traducir('tests')}"),
+        ("system-run-symbolic", f"{n_planificadores} {traducir('planificadores')}"),
         ("x-office-calendar-symbolic", rango_fechas),
-        ("starred-symbolic", f"Mejor: {mejor_planif}"),
-        ("dialog-warning-symbolic", f"Peor: {peor_planif}"),
+        ("starred-symbolic", f"{traducir('Mejor')}: {mejor_planif}"),
+        ("dialog-warning-symbolic", f"{traducir('Peor')}: {peor_planif}"),
     ]:
         card = _crear_tarjeta_resumen(icon, texto)
         win._hist_trend_summary_box.append(card)
@@ -277,7 +279,7 @@ def _refrescar_tendencia(win):
 
     if datos and planificadores:
         es_latencia = "latencia" in tipo_prueba
-        etiquetas = ["Promedio", "Mínimo", "Máximo", "Último", "σ"]
+        etiquetas = [traducir("Promedio"), traducir("Mínimo"), traducir("Máximo"), traducir("Último"), "σ"]
         attrs = ["avg", "minimo", "maximo", "ultimo", "std"]
 
         estadisticas_planif = {}
@@ -339,7 +341,7 @@ def _refrescar_tendencia(win):
         fab_nombre.connect("bind", _on_bind_nombre)
         fab_nombre.connect("unbind", _on_unbind_nombre)
 
-        col_nombre = Gtk.ColumnViewColumn(title="Planificador", factory=fab_nombre)
+        col_nombre = Gtk.ColumnViewColumn(title=traducir("Planificador"), factory=fab_nombre)
         col_nombre.set_fixed_width(160)
         columna_vista.append_column(col_nombre)
 
@@ -388,7 +390,7 @@ def _refrescar_tendencia(win):
             col.set_sorter(sorter)
             columna_vista.append_column(col)
 
-        grupo = Adw.PreferencesGroup(title="Comparativa de Planificadores")
+        grupo = Adw.PreferencesGroup(title=traducir("Comparativa de Planificadores"))
         frame = Gtk.Frame(css_classes=["card"])
         frame.set_margin_start(6)
         frame.set_margin_end(6)
@@ -420,5 +422,5 @@ def _tick_anim(win):
         return False
     win._hist_chart_anim_progress = progreso
     win._hist_chart.queue_draw()
-    win._hist_chart_anim_timer = GLib.timeout_add(16, lambda: _tick_anim(win))
+    win._hist_chart_anim_timer = GLib.timeout_add(INTERVALO_FRAME_MS, lambda: _tick_anim(win))
     return False

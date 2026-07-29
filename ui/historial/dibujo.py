@@ -13,6 +13,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from utils.helpers import generar_color_hash
+from core.constantes import INTERVALO_FRAME_MS
 
 
 def _al_pasar_raton(controlador, x, y, win):
@@ -65,7 +66,7 @@ def _iniciar_anim_hover(win):
     timer = getattr(win, "_hist_chart_hover_timer", None)
     if timer:
         GLib.source_remove(timer)
-    win._hist_chart_hover_timer = GLib.timeout_add(16, _tick_anim_hover, win)
+    win._hist_chart_hover_timer = GLib.timeout_add(INTERVALO_FRAME_MS, _tick_anim_hover, win)
 
 
 def _tick_anim_hover(win):

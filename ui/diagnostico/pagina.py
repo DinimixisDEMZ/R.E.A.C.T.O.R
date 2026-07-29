@@ -13,6 +13,7 @@ from gi.repository import Gtk, Adw, GLib
 from ui.diagnostico.monitoreo import configurar_pestana_monitor, actualizar_diagnostico_tiempo_real
 from ui.diagnostico.scxtop import configurar_pestana_scxtop, _HAS_VTE, Vte
 from ui.historial.entorno import _crear_pagina_entorno
+from utils.i18n import traducir
 
 
 def configurar_ui_diagnostico(win):
@@ -21,13 +22,13 @@ def configurar_ui_diagnostico(win):
     pagina_pref, controles = configurar_pestana_monitor(win)
 
     pila = Adw.ViewStack()
-    pila.add_titled_with_icon(pagina_pref, "monitor", "Monitor", "accessories-calculator-symbolic")
+    pila.add_titled_with_icon(pagina_pref, "monitor", traducir("Monitor"), "accessories-calculator-symbolic")
 
     if _HAS_VTE:
         pagina_scxtop = configurar_pestana_scxtop(win)
-        pila.add_titled_with_icon(pagina_scxtop, "scxtop", "scxtop", "utilities-terminal-symbolic")
+        pila.add_titled_with_icon(pagina_scxtop, "scxtop", traducir("scxtop"), "utilities-terminal-symbolic")
 
-    pila.add_titled_with_icon(_crear_pagina_entorno(win), "entorno", "Entorno", "computer-symbolic")
+    pila.add_titled_with_icon(_crear_pagina_entorno(win), "entorno", traducir("Entorno"), "computer-symbolic")
 
     cambiador = Adw.InlineViewSwitcher()
     cambiador.add_css_class("round")
@@ -64,7 +65,7 @@ def configurar_ui_diagnostico(win):
     vista = Adw.ToolbarView(content=pila)
     vista.add_top_bar(encabezado)
 
-    win.pag_diagnostico = Adw.NavigationPage(title="Diagnóstico", tag="page_e")
+    win.pag_diagnostico = Adw.NavigationPage(title=traducir("Diagnóstico"), tag="page_e")
     win.pag_diagnostico.set_child(vista)
 
     GLib.timeout_add(1500, actualizar_diagnostico_tiempo_real, win, controles)

@@ -8,6 +8,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 from core.database import eliminar_historial
+from utils.i18n import traducir
 from .resultados import _crear_pagina_resultados, _reconstruir_chips, _refrescar_historial
 from .tendencia import _crear_pagina_tendencia
 
@@ -20,13 +21,13 @@ def configurar_ui_historial(win):
     pag_resultados = _crear_pagina_resultados(win)
     pila.add_titled_with_icon(
         pag_resultados, "resultados",
-        "Resultados", "view-list-bullet-symbolic",
+        traducir("Resultados"), "view-list-bullet-symbolic",
     )
 
     pag_tendencia = _crear_pagina_tendencia(win)
     pila.add_titled_with_icon(
         pag_tendencia, "tendencia",
-        "Tendencia", "view-continuous-symbolic",
+        traducir("Tendencia"), "view-continuous-symbolic",
     )
 
     cambiador = Adw.InlineViewSwitcher()
@@ -38,7 +39,7 @@ def configurar_ui_historial(win):
 
     btn_borrar = Gtk.Button(
         icon_name="user-trash-symbolic",
-        tooltip_text="Borrar todo el historial",
+        tooltip_text=traducir("Borrar todo el historial"),
         css_classes=["destructive-action"],
     )
     btn_borrar.connect("clicked", _al_borrar_historial, win)
@@ -62,11 +63,11 @@ def _al_borrar_historial(btn, win):
             _refrescar_historial(win)
 
     dialog = Adw.AlertDialog(
-        heading="¿Borrar todo el historial?",
-        body="Esta acción eliminará permanentemente todos los resultados guardados.",
+        heading=traducir("¿Borrar todo el historial?"),
+        body=traducir("Esta acción eliminará permanentemente todos los resultados guardados."),
     )
-    dialog.add_response("cancel", "Cancelar")
-    dialog.add_response("confirm", "Borrar")
+    dialog.add_response("cancel", traducir("Cancelar"))
+    dialog.add_response("confirm", traducir("Borrar"))
     dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE)
     dialog.connect("response", lambda d, r: _on_confirm(r))
     dialog.present(win)

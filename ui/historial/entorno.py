@@ -7,6 +7,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
+from utils.i18n import traducir
 from utils.helpers import make_lscpu_finder, parse_lscpu_numeric, parse_lscpu_cache
 
 
@@ -20,7 +21,7 @@ def _crear_pagina_entorno(win):
     try:
         release_so = _platform.freedesktop_os_release()
         nombre_distro = release_so.get("PRETTY_NAME", release_so.get("NAME", _platform.system()))
-    except Exception:
+    except (OSError, ValueError):
         nombre_distro = _platform.system()
     arquitectura = _platform.machine()
     nombre_host = _platform.node()
@@ -33,7 +34,7 @@ def _crear_pagina_entorno(win):
             horas = int((actividad % 86400) // 3600)
             minutos = int((actividad % 3600) // 60)
             tiempo_act = f"{dias}d {horas}h {minutos}m"
-    except Exception:
+    except (OSError, ValueError):
         pass
 
     kernel = versiones.get("kernel", "—")
@@ -43,11 +44,11 @@ def _crear_pagina_entorno(win):
     caja_chips = Gtk.Box(spacing=8, margin_top=4, margin_bottom=6, margin_start=12, margin_end=12, halign=Gtk.Align.CENTER)
 
     datos_chips = [
-        ("computer-symbolic", nombre_distro, f"Sistema operativo: {nombre_distro}"),
-        ("system-run-symbolic", kernel, f"Kernel: {kernel}"),
-        ("applications-engineering-symbolic", arquitectura, f"Arquitectura: {arquitectura}"),
-        ("avatar-default-symbolic", nombre_host, f"Hostname: {nombre_host}"),
-        ("preferences-system-time-symbolic", tiempo_act, f"Actividad desde: {tiempo_act}"),
+        ("computer-symbolic", nombre_distro, f"{traducir('Sistema operativo')}: {nombre_distro}"),
+        ("system-run-symbolic", kernel, f"{traducir('Kernel')}: {kernel}"),
+        ("applications-engineering-symbolic", arquitectura, f"{traducir('Arquitectura')}: {arquitectura}"),
+        ("avatar-default-symbolic", nombre_host, f"{traducir('Hostname')}: {nombre_host}"),
+        ("preferences-system-time-symbolic", tiempo_act, f"{traducir('Actividad desde')}: {tiempo_act}"),
     ]
     for icon, text, tip in datos_chips:
         chip = Gtk.Box(spacing=5, css_classes=["card", "pill"], valign=Gtk.Align.CENTER)
@@ -69,7 +70,7 @@ def _crear_pagina_entorno(win):
     pagina.add(grupo_chips)
 
     # ── Herramientas ──
-    grupo_herramientas = Adw.PreferencesGroup(title="Herramientas")
+    grupo_herramientas = Adw.PreferencesGroup(title=traducir("Herramientas"))
     for icon, titulo, valor in [
         ("application-x-executable-symbolic", "scxctl", versiones.get("scxctl", "—")),
         ("utilities-terminal-symbolic", "stress-ng", versiones.get("stressng", "—")),
@@ -79,6 +80,25 @@ def _crear_pagina_entorno(win):
         fila.add_css_class("property")
         fila.set_icon_name(icon)
         grupo_herramientas.add(fila)
+
+    sub_rt = traducir("No instalado")
+    ruta_rt = "/tmp/rt-tests"
+    if _os.path.isdir(ruta_rt):
+        try:
+            with open(_os.path.join(ruta_rt, "Makefile")) as f:
+                ver = ""
+                for linea in f:
+                    if linea.startswith("VERSION"):
+                        ver = linea.split("=", 1)[1].strip()
+                        break
+            sub_rt = f"v{ver}" if ver else "disponible"
+        except (OSError, ValueError):
+            sub_rt = "disponible"
+    fila_rt = Adw.ActionRow(title="rt-tests", subtitle=sub_rt)
+    fila_rt.add_css_class("property")
+    fila_rt.set_icon_name("applications-engineering-symbolic")
+    grupo_herramientas.add(fila_rt)
+
     pagina.add(grupo_herramientas)
 
     # ── Especificaciones Avanzadas de CPU ──
@@ -89,7 +109,7 @@ def _crear_pagina_entorno(win):
     try:
         lscpu_crudo = _subprocess.run(["lscpu", "-J"], capture_output=True, text=True, timeout=2)
         datos_lscpu = _json.loads(lscpu_crudo.stdout) if lscpu_crudo.returncode == 0 and lscpu_crudo.stdout else None
-    except Exception:
+    except (_subprocess.SubprocessError, _json.JSONDecodeError, OSError):
         datos_lscpu = None
 
     if datos_lscpu and 'lscpu' in datos_lscpu:
@@ -110,8 +130,8 @@ def _crear_pagina_entorno(win):
         from widgets.radar import _HAS_CAIRO, RadarChart, _EJES as _RADAR_EJES
         if _HAS_CAIRO:
             radar_group = Adw.PreferencesGroup(
-                title="Capacidades y Topología de Hardware",
-                description="Visualización comparativa de las capacidades de la CPU."
+                title=traducir("Capacidades y Topología de Hardware"),
+                description=traducir("Visualización comparativa de las capacidades de la CPU.")
             )
             radar = RadarChart()
             radar_frame = Gtk.Frame(css_classes=["card"])
@@ -135,7 +155,7 @@ def _crear_pagina_entorno(win):
                         if valor_hilos:
                             nucleos_calculados //= max(1, int(parse_lscpu_numeric(valor_hilos)))
                         valor_nucleos_socket = str(nucleos_calculados) if nucleos_calculados > 0 else None
-                    except Exception:
+                    except (ValueError, TypeError, ZeroDivisionError):
                         pass
 
             crudo = [valor_nucleos, valor_hilos, valor_freq, valor_l3, valor_l2, valor_nucleos_socket]
@@ -161,19 +181,19 @@ def _crear_pagina_entorno(win):
             pagina.add(radar_group)
         else:
             grupo_respaldo = Adw.PreferencesGroup(
-                title="Capacidades y Topología de Hardware",
-                description="Visualización comparativa de las capacidades de la CPU."
+                title=traducir("Capacidades y Topología de Hardware"),
+                description=traducir("Visualización comparativa de las capacidades de la CPU.")
             )
             grupo_respaldo.add(Gtk.Label(
-                label="Cairo no disponible — instala python3-cairo",
+                label=traducir("Cairo no disponible — instala python3-cairo"),
                 css_classes=["dim-label"], margin_top=12, margin_bottom=12
             ))
             pagina.add(grupo_respaldo)
 
         # ── Especificaciones Avanzadas de CPU (detalle lscpu) ──
         detalle_group = Adw.PreferencesGroup(
-            title="Especificaciones Avanzadas de CPU",
-            description="Jerarquía técnica completa agrupada de lscpu."
+            title=traducir("Especificaciones Avanzadas de CPU"),
+            description=traducir("Jerarquía técnica completa agrupada de lscpu.")
         )
         pagina.add(detalle_group)
 
@@ -206,7 +226,7 @@ def _crear_pagina_entorno(win):
 
         for name, desc, _ in pairs:
             if clasificado[name]:
-                exp = Adw.ExpanderRow(title=name, subtitle=desc)
+                exp = Adw.ExpanderRow(title=traducir(name), subtitle=traducir(desc))
                 for campo, data in clasificado[name]:
                     exp.add_row(Adw.ActionRow(title=campo, subtitle=str(data)))
                 detalle_group.add(exp)
@@ -219,10 +239,10 @@ def _crear_pagina_entorno(win):
                 if linea.startswith("model name"):
                     modelo_cpu = linea.split(":", 1)[1].strip()
                     break
-    except Exception:
+    except (OSError, ValueError):
         pass
     grupo_cpu = Adw.PreferencesGroup()
-    fila_cpu = Adw.ActionRow(title=f"<b>{modelo_cpu}</b>", subtitle="Información del procesador")
+    fila_cpu = Adw.ActionRow(title=f"<b>{modelo_cpu}</b>", subtitle=traducir("Información del procesador"))
     fila_cpu.set_icon_name("power-profile-performance-symbolic")
     fila_cpu.set_use_markup(True)
     grupo_cpu.add(fila_cpu)

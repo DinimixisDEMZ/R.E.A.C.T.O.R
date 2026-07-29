@@ -1,13 +1,31 @@
+# Copyright (C) 2026 Dinimixis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """
 REACTOR - Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)
-Versión 0.7.5 | © 2026 UNHARMET
-
 Entry Point: Verificación de dependencias y arranque de la aplicación.
 """
 
 import sys
 import shutil
 import platform
+
+from utils.i18n import configurar_idioma, traducir
+configurar_idioma()
+
+from core.constantes import VERSION
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -16,12 +34,12 @@ from gi.repository import Gtk, Adw
 
 
 _HERRAMIENTAS = [
-    ("scxctl", "scxctl", True, "Gestión de planificadores SCX"),
-    ("stress-ng", "stress-ng", False, "Benchmarks de estrés"),
-    ("hyperfine", "hyperfine", False, "Benchmarks de precisión"),
+    ("scxctl", "scxctl", True, traducir("Gestión de planificadores SCX")),
+    ("stress-ng", "stress-ng", False, traducir("Benchmarks de estrés")),
+    ("hyperfine", "hyperfine", False, traducir("Benchmarks de precisión")),
 ]
 
-_CRITICO_SIN_LINUX = (
+_CRITICO_SIN_LINUX = traducir(
     "Sistema operativo incompatible: {}\n"
     "Esta herramienta solo funciona en Linux con soporte para SCX schedulers."
 )
@@ -44,10 +62,10 @@ def _verificar_herramientas():
 
     # Verificar run0 o sudo
     if not shutil.which("run0") and not shutil.which("sudo"):
-        advertencias.append(
+        advertencias.append(traducir(
             "No se encontró run0 ni sudo. Las operaciones que requieran "
             "privilegios no estarán disponibles."
-        )
+        ))
 
     return criticos, advertencias
 
@@ -59,17 +77,17 @@ def _verificar_importaciones():
         gi.require_version("Vte", "3.91")
         from gi.repository import Vte
     except (ImportError, ValueError):
-        advertencias.append(
+        advertencias.append(traducir(
             "Vte no encontrado. La pestaña scxtop no estará disponible. "
             "Instale el paquete gir1.2-vte-3.91 o similar."
-        )
+        ))
 
     try:
         import cairo
     except ImportError:
-        advertencias.append(
+        advertencias.append(traducir(
             "Cairo no encontrado. Los gráficos radar no se mostrarán."
-        )
+        ))
 
     return advertencias
 
@@ -105,12 +123,12 @@ def main():
 
 
 def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
-    titulo = "Dependencias faltantes" if bloqueante else "Advertencias"
+    titulo = traducir("Dependencias faltantes") if bloqueante else traducir("Advertencias")
     desc = (
-        "No se cumplen los requisitos necesarios para ejecutar todas las "
-        "funcionalidades del gestor."
+        traducir("No se cumplen los requisitos necesarios para ejecutar todas las "
+        "funcionalidades del gestor.")
         if bloqueante else
-        "La aplicación puede iniciarse, pero algunas funcionalidades estarán limitadas."
+        traducir("La aplicación puede iniciarse, pero algunas funcionalidades estarán limitadas.")
     )
     icono = "dialog-error-symbolic" if bloqueante else "dialog-warning-symbolic"
 
@@ -138,7 +156,7 @@ def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
 
         if not bloqueante:
             btn_cont = Gtk.Button(
-                label="Continuar de todas formas",
+                label=traducir("Continuar de todas formas"),
                 halign=Gtk.Align.CENTER,
                 css_classes=["suggested-action", "pill"],
             )
@@ -147,7 +165,7 @@ def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
             caja.append(btn_cont)
 
         btn_salir = Gtk.Button(
-            label="Cerrar Aplicación" if bloqueante else "Salir",
+            label=traducir("Cerrar Aplicación") if bloqueante else traducir("Salir"),
             halign=Gtk.Align.CENTER,
             css_classes=["destructive-action", "pill"] if bloqueante else ["pill"],
         )

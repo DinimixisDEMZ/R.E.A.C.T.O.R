@@ -10,6 +10,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
+from core.constantes import INTERVALO_FRAME_MS, CATEGORIAS_RADAR
+
 try:
     import cairo
     _HAS_CAIRO = True
@@ -17,6 +19,7 @@ except ImportError:
     _HAS_CAIRO = False
 
 from utils.helpers import generar_color_hash, obtener_color_tema
+from utils.i18n import traducir
 
 
 class GraficoComparativo(Gtk.DrawingArea):
@@ -25,10 +28,7 @@ class GraficoComparativo(Gtk.DrawingArea):
         super().__init__()
         self.set_draw_func(self.dibujar)
         self.num_categorias = 6
-        self.categorias = [
-            "Context\nSwitch", "Carga\nMixta", "Mutex",
-            "Fork", "Compile", "Bajo\nCarga"
-        ]
+        self.categorias = [traducir(c) for c in CATEGORIAS_RADAR]
         self.datos_raw = {}
         self.valores_animados = {}
         self.max_por_categoria = [0.0] * self.num_categorias
@@ -54,7 +54,10 @@ class GraficoComparativo(Gtk.DrawingArea):
         ev_motion.connect("leave", self.on_mouse_leave)
         self.add_controller(ev_motion)
 
-        GLib.timeout_add(16, self.tick)
+        self._pulse_adj = Gtk.Adjustment(lower=0.0, upper=1.0, step_increment=0.001, value=0.0)
+        self._pulse_adj.connect("value-changed", lambda a: self.queue_draw())
+
+        GLib.timeout_add(INTERVALO_FRAME_MS, self.tick)
 
     def registrar_scheduler(self, name):
         if name not in self.datos_raw:
@@ -78,6 +81,10 @@ class GraficoComparativo(Gtk.DrawingArea):
         cambio = False
 
         if self._pulse_active:
+            v = self._pulse_adj.get_value() + 0.008
+            if v >= 1.0:
+                v = 0.0
+            self._pulse_adj.set_value(v)
             cambio = True
 
         for s, puntos in self.datos_raw.items():
@@ -129,11 +136,11 @@ class GraficoComparativo(Gtk.DrawingArea):
 
     def iniciar_pulso(self):
         self._pulse_active = True
-        self._pulse_t = 0.0
+        self._pulse_adj.set_value(0.0)
 
     def detener_pulso(self):
         self._pulse_active = False
-        self._pulse_t = 0.0
+        self._pulse_adj.set_value(0.0)
         self.queue_draw()
         return 0.0, 0.0, 0.0
 
@@ -288,7 +295,7 @@ class GraficoComparativo(Gtk.DrawingArea):
             cr.line_to(px, py)
             cr.stroke()
 
-            lineas = self.categorias[i].upper().split("\n")
+            lineas = self.categorias[i].split("\n")
             line_h = cr.text_extents("Ay").height + 2
             exts = [cr.text_extents(l) for l in lineas]
             max_w = max(e.width for e in exts)
@@ -377,14 +384,15 @@ class GraficoComparativo(Gtk.DrawingArea):
         cr.arc(cx, cy, 3, 0, 2 * math.pi)
         cr.fill()
 
-        if self._pulse_active:
-            phase = (self.anim_tick * 0.008) % 1.0
+        phase = self._pulse_adj.get_value()
+        pulse_alpha = 1.0 - phase ** 1.5  # se desvanece naturalmente al expandirse
+        if pulse_alpha > 0.01:
             r = radio * phase
 
             # glow trail behind the ring
             if phase > 0.02:
                 grad = cairo.RadialGradient(cx, cy, 0, cx, cy, r)
-                grad.add_color_stop_rgba(0, tr, tg, tb, 0.05 * (1.0 - phase))
+                grad.add_color_stop_rgba(0, tr, tg, tb, 0.05 * (1.0 - phase) * pulse_alpha)
                 grad.add_color_stop_rgba(1, tr, tg, tb, 0.0)
                 cr.save()
                 for j in range(n + 1):
@@ -403,7 +411,7 @@ class GraficoComparativo(Gtk.DrawingArea):
 
             # ping ring at wave front
             if phase > 0.01:
-                ring_alpha = 0.35 * (1.0 - phase * 0.8)
+                ring_alpha = 0.35 * (1.0 - phase * 0.8) * pulse_alpha
                 cr.set_line_width(1.5)
                 cr.set_source_rgba(tr, tg, tb, ring_alpha)
                 for j in range(n + 1):

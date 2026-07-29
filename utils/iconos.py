@@ -1,10 +1,11 @@
 import os
 import gi
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gdk
+gi.require_version("Gio", "2.0")
+from gi.repository import Gtk, Gdk, Gio
 
 DIR_ICONOS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "icons")
-_PATHS_ORIGINALES = None
+_RUTA_GREOURCE = os.path.join(DIR_ICONOS, "reactor.gresource")
 
 
 def _display():
@@ -13,10 +14,17 @@ def _display():
         d = Gdk.Display.open(None)
     return d
 
+
 def registrar_ruta_iconos():
-    global _PATHS_ORIGINALES
     tema = Gtk.IconTheme.get_for_display(_display())
-    _PATHS_ORIGINALES = list(tema.get_search_path())
+    res_path = "/reactor/icons"
+    if os.path.isfile(_RUTA_GREOURCE):
+        try:
+            res = Gio.Resource.load(_RUTA_GREOURCE)
+            Gio.resources_register(res)
+            tema.add_resource_path(res_path)
+        except Exception:
+            pass
 
 
 def establecer_iconos_idk(usar_idk):
@@ -48,7 +56,7 @@ SINCRONIZANDO = "emblem-synchronizing-symbolic"
 
 # ── Térmico ──
 TEMPERATURA = "temperature-symbolic"
-TEMPERATURA_CRITICA = "software-update-urgent-symbolic"
+TEMPERATURA_CRITICA = "fire-symbolic"
 
 # ── Benchmarks ──
 CPU = "input-mouse-symbolic"
@@ -68,8 +76,8 @@ APP = "application-x-firmware"
 # ── Presets ──
 BALANCEADO = "object-select-symbolic"
 POTENCIA = "power-profile-performance-symbolic"
-RESPUESTA = "preferences-system-time-symbolic"
-FLUIDEZ = "weather-windy-symbolic"
+RESPUESTA = "click-symbolic"
+FLUIDEZ = "wind-symbolic"
 
 # ── Hardware / sistema ──
 COMPUTADORA = "computer-symbolic"

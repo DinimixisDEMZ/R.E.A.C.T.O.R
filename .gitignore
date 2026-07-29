@@ -39,3 +39,12 @@ Thumbs.db
 
 # AppImage
 *.AppImage
+
+# Build artifacts
+build_nuitka/
+
+# Generated
+diagnostico_energetico.html
+
+# Runtime logs
+nohup.out

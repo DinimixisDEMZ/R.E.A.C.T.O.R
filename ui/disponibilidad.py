@@ -2,6 +2,7 @@
 Pestaña de Disponibilidad: Verificación de compatibilidad BPF de schedulers.
 """
 
+import subprocess
 import threading
 import time
 
@@ -12,24 +13,25 @@ from gi.repository import Gtk, Adw, GLib
 
 from utils.helpers import log, limpiar_texto
 from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad, obtener_historial_compatibilidad
+from utils.i18n import traducir
 
 
 def _mensaje_corto(msg, compatible):
     if not msg:
-        return "OK" if compatible else "Sin verificar"
+        return traducir("Correcto") if compatible else traducir("Sin verificar")
     ml = msg.lower()
     if compatible:
-        if "verificado" in ml: return "Verificado"
-        if "residente" in ml: return "Residente"
-        if "shutdown" in ml: return "Shutdown"
-        if "simulado" in ml: return "Simulado"
-        return "OK"
-    if "failed to load bpf" in ml or "bpf" in ml: return "BPF failed"
-    if "no such file" in ml: return "BPF missing"
+        if "verificado" in ml: return traducir("Verificado")
+        if "residente" in ml: return traducir("Residente")
+        if "shutdown" in ml: return traducir("Apagado")
+        if "simulado" in ml: return traducir("Simulado")
+        return traducir("Correcto")
+    if "failed to load bpf" in ml or "bpf" in ml: return traducir("Error BPF")
+    if "no such file" in ml: return traducir("BPF faltante")
     if "error de salida" in ml:
         idx = msg.find("(")
-        return "Error " + msg[idx:idx+6].strip() if idx >= 0 else "Error"
-    if "error" in ml: return "Error"
+        return traducir("Error {}").format(msg[idx:idx+6].strip()) if idx >= 0 else traducir("Error")
+    if "error" in ml: return traducir("Error")
     return msg[:10] + "…" if len(msg) > 10 else msg
 
 
@@ -38,21 +40,14 @@ def _simplificar_kernel(kv):
 
 
 def _fade_in(widget, duration_ms=200):
-    """Anima la opacidad de un widget de 0 a 1."""
     widget.set_opacity(0.0)
-    steps = 10
-    interval = max(duration_ms // steps, 10)
-    state = {"step": 0}
-
-    def _tick():
-        state["step"] += 1
-        widget.set_opacity(state["step"] / steps)
-        return state["step"] < steps
-
-    GLib.timeout_add(interval, _tick)
+    destino = Adw.PropertyAnimationTarget.new(widget, "opacity")
+    anim = Adw.TimedAnimation.new(widget, 0.0, 1.0, duration_ms, destino)
+    anim.set_easing(Adw.Easing.EASE_OUT_QUAD)
+    anim.play()
 
 
-def setup_disponibilidad_ui(win):
+def configurar_ui_disponibilidad(win):
     """Construye la interfaz de la pestaña Disponibilidad."""
     win._disp_filas = {}
     win._verificando = False
@@ -61,13 +56,13 @@ def setup_disponibilidad_ui(win):
     win._disp_pref_page = pref_page
 
     grupo = Adw.PreferencesGroup(
-        title="Compatibilidad de Planificadores",
-        description="Comprueba si el programa BPF de cada planificador puede cargarse en el kernel actual. La verificación requiere privilegios de administrador."
+        title=traducir("Compatibilidad de Planificadores"),
+        description=traducir("Comprueba si el programa BPF de cada planificador puede cargarse en el kernel actual. La verificación requiere privilegios de administrador.")
     )
 
     try:
         nombres = win.scx.obtener_lista()
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         nombres = []
 
     kernel_actual = win.versiones.get("kernel", "")
@@ -99,7 +94,7 @@ def setup_disponibilidad_ui(win):
             if mensaje:
                 row.set_tooltip_text(mensaje)
         else:
-            row.set_subtitle("Sin verificar")
+            row.set_subtitle(traducir("Sin verificar"))
 
         win._disp_filas[nombre] = (row, spinner, icono)
         grupo.add(row)
@@ -108,16 +103,30 @@ def setup_disponibilidad_ui(win):
     pref_page.add(grupo)
 
     # ── Registro de Verificación ──
-    win._disp_grupo_logs = Adw.PreferencesGroup(title="Registro de Verificación")
-    win.expander_logs_disp = Adw.ExpanderRow(title="Terminal de Diagnóstico", subtitle="Salida técnica de los binarios BPF", icon_name="utilities-terminal-symbolic")
-
+    win._disp_grupo_logs = Adw.PreferencesGroup(title=traducir("Registro de Verificación"))
     win.text_view_logs_disp = Gtk.TextView(editable=False, cursor_visible=False, monospace=True, css_classes=["card"])
-    caja_log_disp = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
-    scrolled_disp = Gtk.ScrolledWindow(min_content_height=200, vexpand=True)
-    scrolled_disp.set_child(win.text_view_logs_disp)
-    caja_log_disp.append(scrolled_disp)
-    win.expander_logs_disp.add_row(caja_log_disp)
-    win._disp_grupo_logs.add(win.expander_logs_disp)
+    win._dialog_logs_disp = None
+
+    def _abrir_logs():
+        if win._dialog_logs_disp is None:
+            scrolled = Gtk.ScrolledWindow(min_content_height=400, vexpand=True)
+            scrolled.set_child(win.text_view_logs_disp)
+            win._dialog_logs_disp = Adw.Dialog()
+            ancho = win.get_width()
+            win._dialog_logs_disp.set_content_width(max(ancho - 40, 400))
+            win._dialog_logs_disp.set_content_height(500)
+            win._dialog_logs_disp.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
+            win._dialog_logs_disp.set_child(scrolled)
+        win._dialog_logs_disp.present(win)
+
+    btn_logs = Adw.ActionRow(
+        title=traducir("Terminal de Diagnóstico"),
+        subtitle=traducir("Salida técnica de los binarios BPF"),
+        icon_name="utilities-terminal-symbolic",
+    )
+    btn_logs.set_activatable(True)
+    btn_logs.connect("activated", lambda *_: _abrir_logs())
+    win._disp_grupo_logs.add(btn_logs)
 
     pref_page.add(win._disp_grupo_logs)
 
@@ -127,7 +136,7 @@ def setup_disponibilidad_ui(win):
 
     header = Adw.HeaderBar()
     win._btn_verificar_disp = Gtk.Button(
-        label="Comprobar",
+        label=traducir("Comprobar"),
         css_classes=["suggested-action"],
         valign=Gtk.Align.CENTER
     )
@@ -136,7 +145,7 @@ def setup_disponibilidad_ui(win):
 
     btn_limpiar = Gtk.Button(
         icon_name="user-trash-symbolic",
-        tooltip_text="Limpiar caché de compatibilidad",
+        tooltip_text=traducir("Limpiar caché de compatibilidad"),
         css_classes=["flat"],
         valign=Gtk.Align.CENTER
     )
@@ -152,7 +161,7 @@ def recargar_disponibilidad_ui(win):
     """Refresca la lista de schedulers en disponibilidad al cambiar modo simulación, sin destruir la página."""
     try:
         nuevos = win.scx.obtener_lista()
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         nuevos = []
 
     kernel_actual = win.versiones.get("kernel", "")
@@ -195,7 +204,7 @@ def recargar_disponibilidad_ui(win):
             if mensaje:
                 row.set_tooltip_text(mensaje)
         else:
-            row.set_subtitle("Sin verificar")
+            row.set_subtitle(traducir("Sin verificar"))
 
         win._disp_filas[nombre] = (row, spinner, icono)
         grupo.add(row)
@@ -228,7 +237,7 @@ def _limpiar_cache(win):
     """Limpia la caché de compatibilidad y resetea las filas."""
     limpiar_compatibilidad()
     for nombre, (row, spinner, icono) in win._disp_filas.items():
-        row.set_subtitle("Sin verificar")
+        row.set_subtitle(traducir("Sin verificar"))
         row.set_tooltip_text("")
         icono.set_from_icon_name("dialog-question-symbolic")
         icono.remove_css_class("success")
@@ -236,7 +245,7 @@ def _limpiar_cache(win):
         icono.remove_css_class("warning")
         icono.add_css_class("dim-label")
     _refrescar_historial_compat(win)
-    log(win.text_view_logs_disp, "Caché de compatibilidad limpiada", True)
+    log(win.text_view_logs_disp, traducir("Caché de compatibilidad limpiada"), nivel="title")
 
 
 def _refrescar_historial_compat(win):
@@ -247,7 +256,7 @@ def _refrescar_historial_compat(win):
     if win._disp_grupo_logs is not None and win._disp_grupo_logs.get_parent():
         win._disp_pref_page.remove(win._disp_grupo_logs)
 
-    win._disp_grupo_historial = Adw.PreferencesGroup(title="Historial de Compatibilidad")
+    win._disp_grupo_historial = Adw.PreferencesGroup(title=traducir("Historial de Compatibilidad"))
     win._disp_grupo_historial.add_css_class("history-group")
 
     datos = obtener_historial_compatibilidad()
@@ -259,7 +268,7 @@ def _refrescar_historial_compat(win):
     if not scheds:
         try:
             scheds = sorted(win.scx.obtener_lista())
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             scheds = sorted(set(d["scheduler_name"] for d in datos))
 
     agregados = []
@@ -271,11 +280,11 @@ def _refrescar_historial_compat(win):
         ok_count = sum(1 for d in sched_data if d["is_compatible"])
 
         if ok_count == total:
-            sub = f"{total}/{total} verificados"
+            sub = traducir("{}/{} verificados").format(total, total)
         elif ok_count == 0:
-            sub = f"{total}/{total} fallidos"
+            sub = traducir("{}/{} fallidos").format(total, total)
         else:
-            sub = f"{ok_count}/{total} verificados"
+            sub = traducir("{}/{} verificados").format(ok_count, total)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         lbl_name = Gtk.Label(label=sched, xalign=0, css_classes=["heading"])
@@ -325,7 +334,7 @@ def _refrescar_historial_compat(win):
             win._disp_grupo_historial.add(sep)
 
     if not agregados:
-        lbl = Gtk.Label(label="Esperando datos…", css_classes=["dim-label", "caption"], margin_top=8, margin_bottom=8)
+        lbl = Gtk.Label(label=traducir("Esperando datos…"), css_classes=["dim-label", "caption"], margin_top=8, margin_bottom=8)
         _fade_in(lbl, 400)
         win._disp_grupo_historial.add(lbl)
 
@@ -343,7 +352,7 @@ def iniciar_verificacion(win, btn=None):
             win._verificando = True
             lista_exitosos = []
             GLib.idle_add(win._btn_verificar_disp.set_sensitive, False)
-            log(win.text_view_logs_disp, "INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF", True)
+            log(win.text_view_logs_disp, traducir("INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF"), nivel="title")
 
             # Limpieza nuclear preventiva
             win.scx.detener_todos()
@@ -354,7 +363,7 @@ def iniciar_verificacion(win, btn=None):
                     time.sleep(0.1)
                     hash_val = hash(nombre) % 100
                     disponible = hash_val < 75
-                    msg = "Disponible (Simulado)" if disponible else "Error: Programa incompatible (Simulado)"
+                    msg = traducir("Disponible (Simulado)") if disponible else traducir("Error: Programa incompatible (Simulado)")
                     is_warn = False
                     if disponible:
                         lista_exitosos.append(nombre)
@@ -366,27 +375,27 @@ def iniciar_verificacion(win, btn=None):
                     continue
 
                 def _reset(r=row, s=spinner, i=icono):
-                    r.set_subtitle("Verificando...")
+                    r.set_subtitle(traducir("Verificando..."))
                     i.set_visible(False)
                     s.set_visible(True)
                 GLib.idle_add(_reset)
 
                 disponible = False
                 is_warn = False
-                msg = "Desconocido"
+                msg = traducir("Desconocido")
 
                 try:
                     win.scx.detener_todos()
                     time.sleep(0.3)
 
-                    log(win.text_view_logs_disp, f"Probando scx_{nombre}...")
+                    log(win.text_view_logs_disp, traducir("Probando scx_{}...").format(nombre))
                     result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", f"/usr/bin/scx_{nombre}"])
                     output = (result.stdout + result.stderr).strip()
 
                     if output:
                         output_limpio = limpiar_texto(output)
                         if output_limpio:
-                            log(win.text_view_logs_disp, f"Resumen de scx_{nombre}:\n{output_limpio}")
+                            log(win.text_view_logs_disp, traducir("Resumen de scx_{}:\n{}").format(nombre, output_limpio))
 
                     has_error = any(kw in output for kw in [
                         "Failed to load BPF", "No such file or directory", "Error:"
@@ -395,7 +404,7 @@ def iniciar_verificacion(win, btn=None):
                     if has_error:
                         disponible = False
                         lineas = [l for l in output.splitlines() if l.strip() and "[INFO]" not in l]
-                        msg = lineas[-1].strip() if lineas else "Programa BPF incompatible"
+                        msg = lineas[-1].strip() if lineas else traducir("Programa BPF incompatible")
                     else:
                         log_success_keywords = ["Calibration complete", "scheduler started", "Received shutdown signal", "ACTIVE"]
                         started_ok = any(kw in output for kw in log_success_keywords)
@@ -405,19 +414,19 @@ def iniciar_verificacion(win, btn=None):
                             is_warn = (result.returncode == 0 and not started_ok)
 
                             if started_ok:
-                                msg = "Disponible (Verificado)"
+                                msg = traducir("Disponible (Verificado)")
                             elif result.returncode in [124, 137]:
-                                msg = "Disponible (Residente)"
+                                msg = traducir("Disponible (Residente)")
                             else:
-                                msg = "Disponible (Shutdown detectado)"
+                                msg = traducir("Disponible (Shutdown detectado)")
 
                             lista_exitosos.append(nombre)
                         else:
                             disponible = False
                             lineas = [l for l in output.splitlines() if l.strip()]
-                            msg = lineas[-1].strip() if lineas else f"Error de salida ({result.returncode})"
+                            msg = lineas[-1].strip() if lineas else traducir("Error de salida ({})").format(result.returncode)
 
-                except Exception as e:
+                except (subprocess.SubprocessError, OSError) as e:
                     disponible = False
                     msg = str(e)
 
@@ -428,7 +437,7 @@ def iniciar_verificacion(win, btn=None):
                               _actualizar_fila(r, s, i, ok, t, w))
                 win.scx.ejecutar_con_sudo(["scxctl", "stop"])
 
-            log(win.text_view_logs_disp, "VERIFICACIÓN FINALIZADA", True)
+            log(win.text_view_logs_disp, traducir("VERIFICACIÓN FINALIZADA"), nivel="title")
             win.compatibles = lista_exitosos
             GLib.idle_add(lambda: _refrescar_historial_compat(win))
             try:
@@ -453,7 +462,7 @@ def iniciar_verificacion(win, btn=None):
             GLib.idle_add(_update_badge)
 
             GLib.idle_add(win.sincronizar_sistema)
-            GLib.idle_add(win._btn_verificar_disp.set_sensitive, True)
+            GLib.idle_add(win._btn_verificar_disp.set_sensitive, nivel="title")
             win._verificando = False
 
         threading.Thread(target=_ejecutar, daemon=True).start()

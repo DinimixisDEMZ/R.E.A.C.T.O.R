@@ -3,13 +3,15 @@ Funciones de utilidad compartidas por toda la aplicación.
 Incluye: Regex precompilados, logging, limpieza de texto, colores CSS.
 """
 
+import os
 import re
 from datetime import datetime
 
 import gi
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import GLib
+from gi.repository import GLib, Gdk
 
 # ─── Regex Precompilados ───
 
@@ -20,22 +22,78 @@ RE_ANSI = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 # ─── Logging ───
 
-def log(tv, texto, es_titulo=False, es_error=False):
-    """Añade texto con formato al TextView de logs desde cualquier hilo."""
-    GLib.idle_add(_append_log, tv, texto, es_titulo, es_error)
 
-def _append_log(tv, texto, es_titulo, es_error):
+def log(tv, texto, nivel="info"):
+    """Añade texto con formato al TextView de logs desde cualquier hilo.
+    
+    nivel: "info", "title", "success", "warning", "error"
+    """
+    GLib.idle_add(_append_log, tv, texto, nivel)
+
+
+def _color_adwaita(tv, nombre):
+    """Resuelve un color del tema Adwaita a string hex."""
+    ctx = tv.get_style_context()
+    found, rgba = ctx.lookup_color(nombre)
+    if found:
+        r = max(0, min(255, int(round(rgba.red * 255))))
+        g = max(0, min(255, int(round(rgba.green * 255))))
+        b = max(0, min(255, int(round(rgba.blue * 255))))
+        return f"#{r:02x}{g:02x}{b:02x}"
+    return None
+
+
+def _etiqueta_log(buf, nombre, color=None, negrita=False):
+    tag_table = buf.get_tag_table()
+    tag = tag_table.lookup(nombre)
+    if tag is not None:
+        return tag
+    tag = buf.create_tag(nombre)
+    if color:
+        tag.set_property("foreground", color)
+    if negrita:
+        tag.set_property("weight", 700)
+    return tag
+
+
+def _append_log(tv, texto, nivel):
     buf = tv.get_buffer()
     ts = datetime.now().strftime("%H:%M:%S")
-    if es_error:
-        format_text = f"[{ts}] ⚠️ ERROR: {texto}\n"
-    elif es_titulo:
-        format_text = f"\n{'='*30}\n[{ts}] {texto}\n{'='*30}\n"
+    inicio = buf.get_end_iter()
+
+    if nivel == "error":
+        format_text = f"[{ts}] ERROR: {texto}\n"
+        buf.insert(inicio, format_text)
+        fin = buf.get_end_iter()
+        color = _color_adwaita(tv, "error_color")
+        et = _etiqueta_log(buf, "log-err", color=color, negrita=True)
+        buf.apply_tag(et, buf.get_iter_at_offset(inicio.get_offset()), fin)
+    elif nivel == "warning":
+        format_text = f"[{ts}] {texto}\n"
+        buf.insert(inicio, format_text)
+        fin = buf.get_end_iter()
+        color = _color_adwaita(tv, "warning_color")
+        et = _etiqueta_log(buf, "log-warn", color=color)
+        buf.apply_tag(et, buf.get_iter_at_offset(inicio.get_offset()), fin)
+    elif nivel == "success":
+        format_text = f"[{ts}] {texto}\n"
+        buf.insert(inicio, format_text)
+        fin = buf.get_end_iter()
+        color = _color_adwaita(tv, "success_color")
+        et = _etiqueta_log(buf, "log-ok", color=color, negrita=True)
+        buf.apply_tag(et, buf.get_iter_at_offset(inicio.get_offset()), fin)
+    elif nivel == "title":
+        format_text = f"\n{'─'*35}\n[{ts}] {texto}\n{'─'*35}\n"
+        buf.insert(inicio, format_text)
+        fin = buf.get_end_iter()
+        tt = _etiqueta_log(buf, "log-title", negrita=True)
+        buf.apply_tag(tt, buf.get_iter_at_offset(inicio.get_offset()), fin)
     else:
-        format_text = f"[{ts}] > {texto}\n"
-    buf.insert(buf.get_end_iter(), format_text)
+        format_text = f"[{ts}] {texto}\n"
+        buf.insert(inicio, format_text)
+
     adj = tv.get_vadjustment()
-    if es_titulo or (adj.get_upper() - adj.get_value() - adj.get_page_size()) < 50:
+    if nivel == "title" or (adj.get_upper() - adj.get_value() - adj.get_page_size()) < 50:
         mark = buf.create_mark(None, buf.get_end_iter(), False)
         tv.scroll_to_mark(mark, 0.0, True, 0.5, 1.0)
         buf.delete_mark(mark)
@@ -132,7 +190,7 @@ def parse_lscpu_numeric(s):
             parts = cleaned.split(',')
             cleaned = parts[0] + '.' + parts[1] if len(parts) == 2 else cleaned.replace(',', '')
         return float(cleaned)
-    except Exception:
+    except (ValueError, TypeError):
         return 0.0
 
 
@@ -152,7 +210,7 @@ def parse_lscpu_cache(s):
             elif "GIB" in u or "GB" in u:
                 val *= 1024.0
         return val
-    except Exception:
+    except (ValueError, TypeError):
         return 0.0
 
 
@@ -170,3 +228,15 @@ def make_lscpu_finder(flat_map):
                     return v
         return None
     return find
+
+
+# ─── AppImage / Bundle Detection ───
+
+
+def ruta_bundleada(subpath: str) -> str | None:
+    """Devuelve la ruta completa a un recurso dentro del AppImage, o None."""
+    appdir = os.environ.get("APPDIR")
+    if not appdir:
+        return None
+    ruta = os.path.join(appdir, subpath)
+    return ruta if os.path.exists(ruta) else None

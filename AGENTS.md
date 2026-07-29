@@ -48,15 +48,32 @@ Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización 
     - `rendimiento.py:145` → `input-mouse-symbolic`
     - `automatizacion.py:119` → `application-x-executable-symbolic`
     - `automatizacion.py:138,1049` → `applications-engineering-symbolic`
+- **Split `ui/automatizacion.py`** (1074L) → package `ui/automatizacion/` con 4 submódulos: `__init__.py` (re-exports), `pesos.py`, `historial.py`, `deteccion.py`
+- **`core/constantes.py`** — constantes compartidas: `VERSION`, `TEMP_UMBRAL_*`, `INTERVALO_FRAME_MS`, `PESOS_POR_DEFECTO`
+- **`core/estado.py`** — 3 dataclasses: `BenchmarkState`, `MonitorState`, `AutoDetectionState`; reemplaza atributos planos de VentanaSimple
+- **Tests automatizados** — 49 tests en `tests/` cubriendo `scoring`, `benchmark` (parser YAML), `database` (DB temporal) y `thermal` (sensor mock)
+- **Mejora de excepciones** — 35 `except Exception` genéricos reemplazados por tipos específicos (`OSError`, `ValueError`, `subprocess.SubprocessError`, etc.) en 14 archivos
+- **Scoring renombrado** — `fairness` → `waste` (ratio de desperdicio, bajo = mejor); migración DB incluida
 
 ### Active
 - Ninguno
-- Tareas pendientes: ninguna en este momento
+- **R.E.A.C.T.O.R v1.0** — Primera versión estable released
+
+### Improvement Queue (próximas mejoras)
+1. ✅ Tests automatizados
+2. ✅ Split automatizacion.py
+3. ✅ Fix god-object VentanaSimple
+4. ✅ `pyproject.toml`
+5. ✅ Fix duplicación y constantes
+6. ✅ Mejorar excepciones
 
 ### Known Issues / Limitations
 - No hay issues conocidos activos
 
 ### Key Files
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/pyproject.toml` — proyecto Python estándar (metadatos, deps, pytest/ruff config)
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/constantes.py` — VERSION, umbrales térmicos, intervalos, pesos por defecto
+- `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/estado.py` — BenchmarkState, MonitorState, AutoDetectionState dataclasses
 - `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/scoring.py` — `calcular_scores_finales()` accepts `pesos` param
 - `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/benchmark.py` — p95 reads `nanosecs-per-mutex` for memory type
 - `/home/dinimixis/Documentos/Proyectos/R.E.A.C.T.O.R/core/database.py` — `consultar_runs_auto()` and `cargar_resultados_de_run()`

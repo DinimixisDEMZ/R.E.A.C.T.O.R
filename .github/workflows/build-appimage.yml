@@ -24,6 +24,7 @@ jobs:
           sudo apt-get install -y -qq \
             python3 \
             python3-pip \
+            git \
             libgtk-4-dev \
             libadwaita-1-dev \
             libvte-2.91-gtk4-dev \
@@ -64,7 +65,8 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           NOTES="AppImage para R.E.A.C.T.O.R v${VERSION}
 
-          **Requiere en el sistema:** Python 3, GTK 4, libadwaita, scxctl, stress-ng, hyperfine"
+          **Incluye:** stress-ng, hyperfine, rt-tests (source)
+          **Requiere en el sistema:** GTK 4, libadwaita, scxctl (con sudo/run0)"
           gh release create "v$VERSION" \
             --title "R.E.A.C.T.O.R v$VERSION" \
             --notes "$NOTES" \

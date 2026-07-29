@@ -20,7 +20,7 @@ class SensorTermico:
             try:
                 with open(self._cached_temp_path, 'r') as ft:
                     return int(ft.read().strip()) / 1000.0
-            except Exception:
+            except (OSError, ValueError):
                 self._cached_temp_path = None
 
         # 2. Búsqueda inteligente del sensor adecuado
@@ -50,7 +50,7 @@ class SensorTermico:
                 self._cached_temp_path = fallback_temp_path
                 with open(fallback_temp_path, 'r') as ft:
                     return int(ft.read().strip()) / 1000.0
-        except Exception:
+        except (OSError, ValueError):
             pass
         return 0.0
 

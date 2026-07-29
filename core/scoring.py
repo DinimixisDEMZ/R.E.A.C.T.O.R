@@ -3,7 +3,8 @@ Motor de puntuación y diagnóstico.
 Calcula scores ponderados con media armónica para evaluar schedulers.
 """
 
-HYBRID_TYPES = {"fork", "compile", "loaded"}
+from core.constantes import PESOS_POR_DEFECTO
+from core.tipos import TIPOS_LATENCIA
 
 
 def _first(*values):
@@ -14,7 +15,7 @@ def _first(*values):
     return 0
 
 
-def calcular_score_categorias(data, mejores, pesos=(0.45, 0.45, 0.10)):
+def calcular_score_categorias(data, mejores, pesos=PESOS_POR_DEFECTO):
     """Calcula el score de un scheduler por categoría.
     
     Args:
@@ -34,16 +35,14 @@ def calcular_score_categorias(data, mejores, pesos=(0.45, 0.45, 0.10)):
             # Normalizar entrada para usar claves consistentes
             entrada = _normalizar_entrada(data[t_tipo])
             
-            if t_tipo.startswith("latencia_"):
-                # Hyperfine: menor es mejor
+            if t_tipo in TIPOS_LATENCIA:
                 r_pot = (m['min_val'] / entrada['val']) if entrada['val'] > 0 else 0
                 r_lat = (m['min_p95'] / entrada['p95']) if entrada['p95'] > 0 else 0
             else:
-                # stress-ng: mayor es mejor
                 r_pot = (entrada['val'] / m['max_val']) if m['max_val'] > 0 else 0
                 r_lat = (m['min_p95'] / entrada['p95']) if entrada['p95'] > 0 else 0
             
-            r_flu = max(0.01, 1.0 - entrada['fair'])
+            r_flu = max(0.01, 1.0 - entrada['waste'])
 
             s_cat = (r_pot * w_pot) + (r_lat * w_lat) + (r_flu * w_flu)
             cat_scores.append(max(0.01, s_cat))
@@ -111,7 +110,9 @@ def calcular_mejores(brutos, tipos=("cpu", "threads", "memory")):
 def _normalizar_entrada(item):
     """Convierte una entrada de benchmark a un dict con claves estables.
 
-    Devuelve: {val, p95, fairness, throughput_per_core, efficiency, cores, raw_metrics}
+    'waste' = ratio de desperdicio (0.0 = uso perfecto, 1.0 = todo desperdiciado).
+      - stress-ng: (100 - cpu_usage) / 100  → bajo = buena utilización
+      - hyperfine: std_dev / mean (CV)       → bajo = baja variabilidad
     """
     m = item.get('metrics') or {}
     val = _first(item.get('valor'), item.get('val'), m.get('bogo-ops-per-second-real-time'))
@@ -124,10 +125,10 @@ def _normalizar_entrada(item):
             ns_mutex = m.get('nanosecs-per-mutex')
             p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
 
-    fairness = item.get('fairness')
-    if fairness is None:
+    waste = item.get('waste')
+    if waste is None:
         cpu_usage = _first(item.get('cpu_usage'), m.get('cpu-usage-per-instance'))
-        fairness = max(0.0, (100.0 - cpu_usage) / 100.0) if cpu_usage else 0.5
+        waste = max(0.0, (100.0 - cpu_usage) / 100.0) if cpu_usage else 0.5
 
     cores = _first(item.get('cores'), m.get('cpus')) or 1
     throughput_per_core = (val / cores) if cores else val
@@ -138,7 +139,7 @@ def _normalizar_entrada(item):
     return {
         'val': val,
         'p95': p95,
-        'fair': fairness,
+        'waste': waste,
         'throughput_per_core': throughput_per_core,
         'efficiency': efficiency,
         'cores': cores,
@@ -146,7 +147,7 @@ def _normalizar_entrada(item):
     }
 
 
-def calcular_scores_finales(brutos, pesos=(0.45, 0.45, 0.10), tipos=None):
+def calcular_scores_finales(brutos, pesos=PESOS_POR_DEFECTO, tipos=None):
     """Calcula los scores finales de todos los schedulers.
     
     Args:
@@ -185,7 +186,7 @@ def calcular_scores_finales(brutos, pesos=(0.45, 0.45, 0.10), tipos=None):
     return scores
 
 
-def calcular_ranking_manual(datos_rendimiento, pesos=(0.45, 0.45, 0.10)):
+def calcular_ranking_manual(datos_rendimiento, pesos=PESOS_POR_DEFECTO):
     """Calcula el ranking para pruebas manuales (Pestaña de Rendimiento).
     
     Soporta tanto stress-ng (cpu, threads, memory) como hyperfine (latencia_*).
@@ -207,8 +208,7 @@ def calcular_ranking_manual(datos_rendimiento, pesos=(0.45, 0.45, 0.10)):
         tipo = d["tipo"]
         if sc not in per_sc:
             per_sc[sc] = {}
-        # Para hyperfine, menor valor es mejor
-        if tipo.startswith("latencia_"):
+        if tipo in TIPOS_LATENCIA:
             if tipo not in per_sc[sc] or d["valor"] < per_sc[sc][tipo]:
                 per_sc[sc][tipo] = d["valor"]
         else:
@@ -219,28 +219,19 @@ def calcular_ranking_manual(datos_rendimiento, pesos=(0.45, 0.45, 0.10)):
     for sc, tests in per_sc.items():
         cat_scores = []
         for t_tipo in tests:
-            if t_tipo.startswith("latencia_"):
-                # Hyperfine: menor es mejor
-                min_v = min([d['valor'] for d in datos_rendimiento if d['tipo'] == t_tipo], default=1)
-                min_p = min([d['p95'] for d in datos_rendimiento if d['tipo'] == t_tipo and d['p95'] > 0], default=1)
-                reg = next((d for d in reversed(datos_rendimiento) if d['sched'] == sc and d['tipo'] == t_tipo), None)
-                if not reg:
-                    continue
+            min_v = min([d['valor'] for d in datos_rendimiento if d['tipo'] == t_tipo], default=1)
+            min_p = min([d['p95'] for d in datos_rendimiento if d['tipo'] == t_tipo and d['p95'] > 0], default=1)
+            max_v = max([d['valor'] for d in datos_rendimiento if d['tipo'] == t_tipo], default=1)
+            reg = next((d for d in reversed(datos_rendimiento) if d['sched'] == sc and d['tipo'] == t_tipo), None)
+            if not reg:
+                continue
 
+            if t_tipo in TIPOS_LATENCIA:
                 r_pot = (min_v / reg['valor']) if reg['valor'] > 0 else 0
-                r_lat = (min_p / reg['p95']) if reg['p95'] > 0 else 0
-                r_flu = max(0.01, 1.0 - reg['fairness'])
             else:
-                # stress-ng: mayor es mejor
-                max_v = max([d['valor'] for d in datos_rendimiento if d['tipo'] == t_tipo], default=1)
-                min_p = min([d['p95'] for d in datos_rendimiento if d['tipo'] == t_tipo and d['p95'] > 0], default=1)
-                reg = next((d for d in reversed(datos_rendimiento) if d['sched'] == sc and d['tipo'] == t_tipo), None)
-                if not reg:
-                    continue
-
                 r_pot = reg['valor'] / max_v if max_v > 0 else 0
-                r_lat = (min_p / reg['p95']) if reg['p95'] > 0 else 0
-                r_flu = max(0.01, 1.0 - reg['fairness'])
+            r_lat = (min_p / reg['p95']) if reg['p95'] > 0 else 0
+            r_flu = max(0.01, 1.0 - reg['waste'])
 
             cat_scores.append((r_pot * pesos[0]) + (r_lat * pesos[1]) + (r_flu * pesos[2]))
 
@@ -250,49 +241,3 @@ def calcular_ranking_manual(datos_rendimiento, pesos=(0.45, 0.45, 0.10)):
 
     return scores_finales
 
-
-_MAPA_CHART = {
-    "cpu": 0, "threads": 1, "memory": 2,
-    "latencia_fork": 3, "latencia_compile": 4, "latencia_loaded": 5,
-    "fork": 3, "compile": 4, "loaded": 5,
-}
-
-
-def calcular_valor_grafico(res, tipo):
-    """Calcula el valor normalizado para el gráfico radar.
-    
-    Devuelve un float listo para pasar a grafico.actualizar_dato().
-    """
-    if tipo == "cpu":
-        return 1000.0 / max(0.01, res.get("p95", 0))
-    elif tipo == "threads":
-        ops = res.get("ops_real") or res.get("valor") or 0
-        cores = max(1, res.get("cores") or 1)
-        return ops / cores
-    elif tipo == "memory":
-        ops = res.get("ops_real") or res.get("valor") or 0
-        p95v = max(0.1, res.get("p95") or 1.0)
-        return ops / p95v
-    elif tipo in ("fork", "latencia_fork"):
-        return 1000.0 / max(0.01, res.get("p95", 0))
-    elif tipo in ("loaded", "latencia_loaded", "compile", "latencia_compile"):
-        ops = res.get("valor") or 0
-        p95v = max(0.1, res.get("p95") or 1.0)
-        return ops / p95v
-    else:
-        return res.get("valor", 0)
-
-
-def calcular_valor_ranking(res, tipo):
-    """Calcula el valor normalizado para mostrar en la UI de ranking.
-    
-    Para stress-ng: mayor es mejor. Para hyperfine: valor directo en µs.
-    """
-    if tipo == "cpu":
-        return 1000.0 / max(0.01, res.get("p95", 0))
-    elif tipo == "memory":
-        return res.get("valor", 0) / max(0.1, res.get("p95") or 1.0)
-    elif tipo.startswith("latencia_"):
-        return res.get("valor", 0)
-    else:
-        return res.get("valor", 0)

@@ -8,6 +8,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, GLib
+from utils.i18n import traducir
 
 try:
     gi.require_version("Vte", "3.91")
@@ -25,7 +26,7 @@ def configurar_pestana_scxtop(win):
 
     if not _HAS_VTE:
         pagina_scxtop.append(Gtk.Label(
-            label="Vte no instalado — instale gir1.2-vte-3.91 para scxtop",
+            label=traducir("Vte no instalado — instale gir1.2-vte-3.91 para scxtop"),
             css_classes=["dim-label"],
             margin_top=24, margin_bottom=24, hexpand=True))
         return pagina_scxtop
@@ -49,7 +50,7 @@ def configurar_pestana_scxtop(win):
         GLib.idle_add(_lanzar_scxtop)
     else:
         pagina_scxtop.append(Gtk.Label(
-            label="scxtop no instalado", css_classes=["dim-label"],
+            label=traducir("scxtop no instalado"), css_classes=["dim-label"],
             margin_top=24, margin_bottom=24, hexpand=True))
 
     return pagina_scxtop

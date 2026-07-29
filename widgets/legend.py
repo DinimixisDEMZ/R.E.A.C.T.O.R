@@ -10,6 +10,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Gdk
 
+from utils.i18n import traducir
+
 
 def crear_chip_leyenda(nombre, grafico, box_leyenda):
     """Crea un chip de leyenda interactivo para un scheduler.
@@ -40,7 +42,7 @@ def crear_chip_leyenda(nombre, grafico, box_leyenda):
         cr.stroke()
     ), None)
 
-    label = Gtk.Label(label=nombre)
+    label = Gtk.Label(label=traducir(nombre))
     label.set_margin_end(10)
     label.set_margin_top(4)
     label.set_margin_bottom(4)
