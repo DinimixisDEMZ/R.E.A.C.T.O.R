@@ -266,17 +266,17 @@ class VentanaSimple(Adw.ApplicationWindow):
             developer_name=traducir("DinimixisDEMZ"),
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='reactor',
-            release_notes=traducir("""R.E.A.C.T.O.R 0.8 — Refactorización y estabilidad.
-• Refactorización completa del código: split de automatización, tests, constantes, dataclasses de estado.
-• Aplanado de historial git: todos los cambios post-v0.7.5 consolidados en un solo commit.
-• Sistema de iconos portátil con GResource — funcionan en cualquier distribución.
-• Internacionalización (i18n): español, inglés, francés, alemán, italiano, portugués.
-• 49 tests automatizados cubriendo scoring, benchmark, database y thermal.
-• Botones de benchmark por fila individual, gráfico radar con pulso animado.
-• AppImage autónomo con stress-ng, hyperfine y rt-tests incluidos.
-• Verificación del sistema con soporte run0 (systemd ≥256).
-• Terminal scxtop integrada para monitoreo avanzado.
-• Radar comparativo con pesos ajustables (Potencia/Respuesta/Fluidez).""")
+            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0 — Refactorización y estabilidad.</p>
+<p>• Refactorización completa del código<br/>
+• Aplanado de historial git<br/>
+• Sistema de iconos portátil con GResource<br/>
+• Internacionalización (i18n): 6 idiomas<br/>
+• 57 tests automatizados<br/>
+• Botones de benchmark por fila<br/>
+• AppImage autónomo con hyperfine, cyclictest<br/>
+• Verificación del sistema con soporte run0<br/>
+• Terminal scxtop integrada<br/>
+• Radar comparativo con pesos ajustables</p>""")
         )
 
         dialogo.add_credit_section(traducir("Desarrollo y Diseño"), [

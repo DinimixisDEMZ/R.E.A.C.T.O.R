@@ -64,10 +64,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
+          gh release delete "v$VERSION" --yes 2>/dev/null || true
           NOTES="AppImage para R.E.A.C.T.O.R v${VERSION}
 
-          **Incluye:** stress-ng (estático), hyperfine (estático), cyclictest (estático), rt-tests source
-          **Requiere en el sistema:** GTK 4, libadwaita, scxctl, make, gcc"
+          **Incluye:** hyperfine (estático), cyclictest (estático), rt-tests source
+          **Requiere en el sistema:** GTK 4, libadwaita, scxctl, stress-ng, make, gcc"
           gh release create "v$VERSION" \
             --title "R.E.A.C.T.O.R v$VERSION" \
             --notes "$NOTES" \

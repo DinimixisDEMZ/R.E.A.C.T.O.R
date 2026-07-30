@@ -53,11 +53,13 @@ def _check_binario(nombre_bin: str, nombre_mostrar: str = "") -> Resultado:
         bundle = ruta_bundleada(f"usr/bin/{nombre_bin}")
         if bundle:
             return Resultado(True, f"{bundle} (bundle)")
-        return Resultado(False, f"{nombre} no incluido en el AppImage")
+        return Resultado(False, f"{nombre} no incluido en el AppImage",
+                         sugerencia="El AppImage se construyó sin este binario. Revisá los logs del CI.")
     ruta = shutil.which(nombre_bin)
     if ruta:
         return Resultado(True, f"{ruta}")
-    return Resultado(False, "No encontrado en el sistema")
+    return Resultado(False, "No encontrado en el sistema",
+                     sugerencia=f"Instalá {nombre_bin} con tu gestor de paquetes (ej: 'sudo eopkg install {nombre_bin}')")
 
 
 def _check_version(nombre_bin: str, args: list[str] | None = None) -> Resultado:
@@ -65,14 +67,21 @@ def _check_version(nombre_bin: str, args: list[str] | None = None) -> Resultado:
         r = subprocess.run([nombre_bin] + (args or ["--version"]), capture_output=True, text=True, timeout=10)
         salida = (r.stdout or r.stderr or "").strip()
         if salida:
-            return Resultado(True, salida.split("\n")[0])
+            linea = salida.split("\n")[0]
+            resto = "\n".join(salida.split("\n")[1:5]) if len(salida.split("\n")) > 1 else ""
+            return Resultado(True, linea, detalles=resto)
         return Resultado(False, "No devolvió versión")
     except FileNotFoundError:
-        return Resultado(False, "Binario no encontrado")
+        ruta = shutil.which(nombre_bin) or "(no encontrado en PATH)"
+        return Resultado(False, f"Binario no encontrado",
+                         detalles=f"ruta buscada: {ruta}",
+                         sugerencia=f"Asegurate de que {nombre_bin} esté instalado, tenga el loader correcto y esté en PATH")
     except subprocess.TimeoutExpired:
-        return Resultado(False, "Tiempo de espera agotado")
+        return Resultado(False, f"Tiempo de espera agotado para {nombre_bin} --version",
+                         sugerencia="El binario puede estar corrupto o colgado")
     except (OSError, subprocess.SubprocessError) as e:
-        return Resultado(False, str(e))
+        ruta = shutil.which(nombre_bin) or "?"
+        return Resultado(False, str(e)[:80], detalles=f"ruta: {ruta}\n{type(e).__name__}: {e}")
 
 
 def _check_comando(cmd: list[str], parser: Callable | None = None, desc: str = "") -> Resultado:
@@ -137,6 +146,23 @@ def _check_sched_ext_sysfs() -> Resultado:
                      sugerencia="Asegurate de usar un kernel con CONFIG_SCHED_CLASS_EXT activado")
 
 
+def _check_scxctl() -> Resultado:
+    """scxctl siempre se verifica en el sistema (no se bundlea)."""
+    ruta = shutil.which("scxctl")
+    if ruta:
+        return Resultado(True, f"{ruta}")
+    return Resultado(False, "No encontrado en el sistema (scxctl es requerido)")
+
+
+def _check_sistema(nombre_bin: str) -> Resultado:
+    """Verifica un binario en el sistema ignorando modo AppImage."""
+    ruta = shutil.which(nombre_bin)
+    if ruta:
+        return Resultado(True, f"{ruta}")
+    return Resultado(False, "No encontrado en el sistema",
+                     sugerencia=f"Instalá {nombre_bin} con tu gestor de paquetes")
+
+
 def _check_rt_tests() -> Resultado:
     if _modo_appimage():
         from utils.helpers import ruta_bundleada
@@ -179,7 +205,6 @@ def _check_appimage_integridad() -> Resultado:
     if not appdir or not os.path.isdir(appdir):
         return Resultado(False, "$APPDIR no apunta a un directorio válido")
     required = [
-        ("usr/bin/stress-ng", "stress-ng"),
         ("usr/bin/hyperfine", "hyperfine"),
         ("usr/bin/cyclictest", "cyclictest"),
         ("usr/share/reactor/rt-tests/Makefile", "rt-tests source"),
@@ -196,7 +221,7 @@ def _check_appimage_integridad() -> Resultado:
 
 VERIFICACIONES: list[Verificacion] = [
     # ── Críticos (siempre sistema) ──
-    Verificacion("scxctl_bin", "scxctl instalado", lambda: _check_binario("scxctl"), critico=True),
+    Verificacion("scxctl_bin", "scxctl instalado", _check_scxctl, critico=True),
     Verificacion("scxctl_list", "scxctl list (formato JSON)", lambda: _check_comando(["scxctl", "list"], parser=_parse_scxctl_list), critico=True),
     Verificacion("scxctl_get", "scxctl get (parseable)", lambda: _check_comando(["scxctl", "get"], parser=_parse_scxctl_get), critico=True),
     Verificacion("scxctl_version", "Versión de scxctl", lambda: _check_version("scxctl", ["--version"]), critico=False),
@@ -208,7 +233,7 @@ VERIFICACIONES: list[Verificacion] = [
 
 # ── Chequeos específicos de herramientas (modo-aware) ──
 _VERIFICACIONES_HERRAMIENTAS: list[Verificacion] = [
-    Verificacion("stressng_bin", "stress-ng instalado", lambda: _check_binario("stress-ng"), critico=False),
+    Verificacion("stressng_bin", "stress-ng instalado", lambda: _check_sistema("stress-ng"), critico=False),
     Verificacion("stressng_version", "Versión de stress-ng", lambda: _check_version("stress-ng", ["--version"]), critico=False),
     Verificacion("hyperfine_bin", "hyperfine instalado", lambda: _check_binario("hyperfine"), critico=False),
     Verificacion("hyperfine_version", "Versión de hyperfine", lambda: _check_version("hyperfine", ["--version"]), critico=False),

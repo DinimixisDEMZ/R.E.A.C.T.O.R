@@ -33,7 +33,7 @@ find "$APP_DIR/usr/share/reactor/" -type d -name '__pycache__' -exec rm -rf {} +
 
 # Inyectar versión desde git tag si está disponible
 if [ -n "$VERSION" ]; then
-    echo "  Inyectando versión v$VERSION desde git tag..."
+    echo "  Inyectando versión $VERSION desde git tag..."
     sed -i "s/^VERSION = \".*\"/VERSION = \"${VERSION#v}\"/" "$APP_DIR/usr/share/reactor/core/constantes.py"
 fi
 
@@ -53,27 +53,8 @@ fi
 cp "$BUILD_DIR/hyperfine" "$APP_DIR/usr/bin/hyperfine"
 echo "  ✓ hyperfine"
 
-# stress-ng: Alpine musl static (repo community)
-if [ ! -f "$BUILD_DIR/stress-ng" ]; then
-    echo "  Descargando stress-ng desde Alpine (musl)..."
-    STRESS_NG_APK=$(wget -q -O- "https://dl-cdn.alpinelinux.org/alpine/edge/community/x86_64/" 2>/dev/null | \
-        grep -oE 'stress-ng-[0-9]+\.[0-9]+\.[a-zA-Z0-9]+-r[0-9]+\.apk' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1 || true)
-    if [ -n "$STRESS_NG_APK" ]; then
-        wget -q -O /tmp/stress-ng.apk "https://dl-cdn.alpinelinux.org/alpine/edge/community/x86_64/$STRESS_NG_APK"
-        tar xzf /tmp/stress-ng.apk -C /tmp/ 2>/dev/null || true
-        if [ -f /tmp/usr/bin/stress-ng ]; then
-            cp /tmp/usr/bin/stress-ng "$BUILD_DIR/stress-ng"
-            chmod +x "$BUILD_DIR/stress-ng"
-        fi
-        rm -rf /tmp/stress-ng.apk /tmp/usr/
-    fi
-fi
-if [ -f "$BUILD_DIR/stress-ng" ]; then
-    cp "$BUILD_DIR/stress-ng" "$APP_DIR/usr/bin/stress-ng"
-    echo "  ✓ stress-ng (static)"
-else
-    echo "  ⚠ stress-ng no disponible (se omite — solo afecta benchmark memory/threads)"
-fi
+# stress-ng: se usa del sistema (pendiente de bundlear post-release con musl wrapper)
+echo "  • stress-ng se usará del sistema (post-release: bundle musl)"
 
 # cyclictest + rt-tests source
 # Se compila cyclictest estático y se bundlea el source para benchmark compile

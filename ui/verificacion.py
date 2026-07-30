@@ -100,20 +100,24 @@ def mostrar_verificacion(win, automatico=False):
             iconos[i].set_from_icon_name(OK)
             iconos[i].add_css_class("success")
             expanders[i].set_subtitle(r.mensaje[:80])
-        elif not v.critico:
-            iconos[i].set_from_icon_name(ADVERTENCIA)
-            iconos[i].add_css_class("warning")
-            expanders[i].set_subtitle(r.mensaje[:80])
-            if r.sugerencia or r.detalles:
-                filas_detalle[i].set_title(r.sugerencia or r.detalles or r.mensaje)
-                filas_detalle[i].set_visible(True)
         else:
-            iconos[i].set_from_icon_name(ERROR)
-            iconos[i].add_css_class("error")
-            expanders[i].set_subtitle(r.mensaje[:80])
-            if r.sugerencia or r.detalles:
-                filas_detalle[i].set_title(r.sugerencia or r.detalles or r.mensaje)
-                filas_detalle[i].set_visible(True)
+            iconos[i].set_from_icon_name(ERROR if v.critico else ADVERTENCIA)
+            iconos[i].add_css_class("error" if v.critico else "warning")
+            expanders[i].set_subtitle("—")
+
+        # Detalle completo al expandir
+        detalles = []
+        if r.mensaje:
+            detalles.append(r.mensaje)
+        if r.detalles:
+            detalles.append(r.detalles)
+        if r.sugerencia:
+            detalles.append(r.sugerencia)
+        if not r.exito and not detalles:
+            detalles.append(traducir("Sin información adicional disponible."))
+        if detalles:
+            filas_detalle[i].set_title("\n".join(detalles))
+            filas_detalle[i].set_visible(True)
 
     def _completado(resultados):
         total = len(resultados)

@@ -60,9 +60,9 @@ def _crear_pagina_entorno(win):
     # ── Herramientas ──
     grupo_herramientas = Adw.PreferencesGroup(title=traducir("Herramientas"))
     for icon, titulo, valor in [
-        ("application-x-executable-symbolic", "scxctl", versiones.get("scxctl", "—")),
-        ("utilities-terminal-symbolic", "stress-ng", versiones.get("stressng", "—")),
-        ("applications-utilities-symbolic", "hyperfine", versiones.get("hyperfine", "—")),
+        ("application-x-executable-symbolic", "scxctl", versiones.get("scxctl") or "—"),
+        ("utilities-terminal-symbolic", "stress-ng", versiones.get("stressng") or "—"),
+        ("applications-utilities-symbolic", "hyperfine", versiones.get("hyperfine") or "—"),
     ]:
         fila = Adw.ActionRow(title=titulo, subtitle=valor or "—")
         fila.add_css_class("property")
@@ -71,6 +71,11 @@ def _crear_pagina_entorno(win):
 
     sub_rt = traducir("No instalado")
     ruta_rt = "/tmp/rt-tests"
+    if not _os.path.isdir(ruta_rt):
+        appdir = _os.environ.get("APPDIR")
+        bundle = _os.path.join(appdir, "usr/share/reactor/rt-tests") if appdir else None
+        if bundle and _os.path.isdir(bundle):
+            ruta_rt = bundle
     if _os.path.isdir(ruta_rt):
         try:
             with open(_os.path.join(ruta_rt, "Makefile")) as f:
@@ -82,6 +87,8 @@ def _crear_pagina_entorno(win):
             sub_rt = f"v{ver}" if ver else "disponible"
         except (OSError, ValueError):
             sub_rt = "disponible"
+    else:
+        sub_rt = "no encontrado"
     fila_rt = Adw.ActionRow(title="rt-tests", subtitle=sub_rt)
     fila_rt.add_css_class("property")
     fila_rt.set_icon_name("applications-engineering-symbolic")

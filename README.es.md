@@ -4,7 +4,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-blue)](https://www.kernel.org/)
 [![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![GTK](https://img.shields.io/badge/gtk-4.0-47748F?logo=gnome&logoColor=white)](https://www.gtk.org/)
-[![Status](https://img.shields.io/badge/status-v0.8%20Development-blue)]()
+[![Status](https://img.shields.io/badge/status-v1.0.5%20Release-blue)]()
 [![Build](https://img.shields.io/badge/build-AppImage-success)]()
 
 Reactor de Experimentación Avanzada Concurrente Telúrico para Optimización de Rendimiento
@@ -20,7 +20,7 @@ Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona
 
 - UI moderna con GTK4 y Libadwaita.
 - Control de schedulers SCX mediante `scxctl`.
-- **AppImage autocontenido** con stress-ng, hyperfine, cyclictest incluidos.
+- **AppImage autocontenido** con hyperfine, cyclictest incluidos.
 - Persistencia de historial en SQLite (`~/.local/share/scxctl/history.db`).
 - Comparación de resultados con ponderaciones ajustables (potencia, respuesta, fluidez).
 - Vista de logs técnicos y gráficos de tendencias con tabla comparativa nativa Gtk.ColumnView.
@@ -43,7 +43,7 @@ chmod +x R.E.A.C.T.O.R-*.AppImage
 ./R.E.A.C.T.O.R-*.AppImage
 ```
 
-El AppImage incluye stress-ng, hyperfine y cyclictest — no necesita instalación en el sistema.
+El AppImage incluye hyperfine y cyclictest — no necesita instalación en el sistema para esos (stress-ng se requiere en el sistema).
 
 ### Desde fuente
 
@@ -60,7 +60,7 @@ python3 main.py
 - GTK 4, Libadwaita >= 1
 - `scxctl` (del sistema, específico del kernel)
 - `sudo` o `run0` con sesión activa
-- `stress-ng`, `hyperfine`, `gcc` + `make` (para benchmark compile)
+- `stress-ng`, `hyperfine`, `gcc` + `make` (para benchmark compile; stress-ng necesario incluso en AppImage)
 
 ### Ejecutar tests
 
