@@ -68,3 +68,24 @@ Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización 
 - `utils/iconos.py` — constantes de iconos portátiles + GResource
 - `utils/i18n.py` — internacionalización gettext
 - `data/icons/reactor.gresource` — GResource compilado con SVGs bundleados
+
+### Adw.AboutDialog release_notes
+**No usa Pango markup.** Usa **AppStream description standards**:
+- `<p>` párrafos
+- `<ul>` / `<ol>` listas desordenadas/ordenadas
+- `<li>` ítems de lista
+- `<em>` itálica
+- `<code>` monoespaciado
+- Texto fuera de estos elementos se ignora.
+- No anidar listas.
+- Usar `release_notes_version` para mostrar la versión sobre las notas.
+
+### AppImage — Binarios musl
+Los binarios de Alpine (musl) son dinámicamente enlazados contra musl.
+El intérprete `/lib/ld-musl-x86_64.so.1` no existe en sistemas glibc.
+Para bundlearlos en AppImage se necesita un wrapper:
+```bash
+#!/bin/bash
+exec "$HERE/../lib/ld-musl-x86_64.so.1" "$HERE/stress-ng.bin" "$@"
+```
+Pendiente de implementar post-release.

@@ -266,17 +266,17 @@ class VentanaSimple(Adw.ApplicationWindow):
             developer_name=traducir("DinimixisDEMZ"),
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='reactor',
-            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0 — Refactorización y estabilidad.</p>
-<p>• Refactorización completa del código<br/>
-• Aplanado de historial git<br/>
-• Sistema de iconos portátil con GResource<br/>
-• Internacionalización (i18n): 6 idiomas<br/>
-• 57 tests automatizados<br/>
-• Botones de benchmark por fila<br/>
-• AppImage autónomo con hyperfine, cyclictest<br/>
-• Verificación del sistema con soporte run0<br/>
-• Terminal scxtop integrada<br/>
-• Radar comparativo con pesos ajustables</p>""")
+            release_notes_version=VERSION,
+            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0 — Refactorización y AppImage.</p>
+<ul>
+<li>Refactorización completa del código</li>
+<li>Aplanado de historial git</li>
+<li>57 tests automatizados</li>
+<li>AppImage autónomo con hyperfine, cyclictest</li>
+<li>Verificación del sistema con soporte run0</li>
+<li>i18n: español, inglés, francés, alemán, italiano, portugués</li>
+<li>Scoring: media armónica con pesos ajustables</li>
+</ul>"""),
         )
 
         dialogo.add_credit_section(traducir("Desarrollo y Diseño"), [

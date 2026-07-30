@@ -134,7 +134,7 @@ def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
 
     def activate(app):
         win = Adw.Window(application=app, title=titulo)
-        win.set_default_size(500, 450)
+        win.set_default_size(500, 570)
 
         status = Adw.StatusPage(icon_name=icono, title=titulo, description=desc)
         caja = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
