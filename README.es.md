@@ -1,15 +1,35 @@
 # R.E.A.C.T.O.R
 
+<!--toc:start-->
+- [R.E.A.C.T.O.R](#reactor)
+  - [Características](#características)
+  - [Instalación](#instalación)
+    - [AppImage (recomendado)](#appimage-recomendado)
+    - [Desde fuente](#desde-fuente)
+    - [Requisitos (modo fuente)](#requisitos-modo-fuente)
+    - [Ejecutar tests](#ejecutar-tests)
+  - [Estructura del proyecto](#estructura-del-proyecto)
+  - [Sistema de Puntuación](#sistema-de-puntuación)
+    - [1. Métricas Crudas](#1-métricas-crudas)
+    - [2. Score por Categoría](#2-score-por-categoría)
+    - [3. Puntaje Final](#3-puntaje-final)
+    - [4. Ranking Manual](#4-ranking-manual)
+  - [Licencia](#licencia)
+  - [Traducciones](#traducciones)
+<!--toc:end-->
+
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue)](https://www.kernel.org/)
 [![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![GTK](https://img.shields.io/badge/gtk-4.0-47748F?logo=gnome&logoColor=white)](https://www.gtk.org/)
-[![Status](https://img.shields.io/badge/status-v1.0.5%20Release-blue)]()
-[![Build](https://img.shields.io/badge/build-AppImage-success)]()
+[![Status](https://img.shields.io/badge/status-v1.0.5%20Release-blue)](Status)
+[![Build](https://img.shields.io/badge/build-AppImage-success)](Sucess)
 
 Reactor de Experimentación Avanzada Concurrente Telúrico para Optimización de Rendimiento
 
-Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona una interfaz gráfica GTK4/Libadwaita para:
+Herramienta de benchmarking y gestión de schedulers `scx` en Linux.
+Proporciona una interfaz gráfica GTK4/Libadwaita para:
+
 - inspección de schedulers disponibles,
 - ejecución de benchmarks de rendimiento,
 - detección automática del mejor scheduler,
@@ -36,14 +56,17 @@ Herramienta de benchmarking y gestión de schedulers `scx` en Linux. Proporciona
 
 ### AppImage (recomendado)
 
-Descargá el `R.E.A.C.T.O.R-*.AppImage` desde [Releases](https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/releases), hacele ejecutable y ejecutalo:
+Descarga el `R.E.A.C.T.O.R-*.AppImage` desde [Releases](https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/releases),
+se le realiza ejecutable y ejecución:
 
 ```bash
 chmod +x R.E.A.C.T.O.R-*.AppImage
 ./R.E.A.C.T.O.R-*.AppImage
 ```
 
-El AppImage incluye hyperfine y cyclictest — no necesita instalación en el sistema para esos (stress-ng se requiere en el sistema).
+El AppImage incluye hyperfine y cyclictest —
+no necesita instalación en el sistema para esos
+(stress-ng se requiere en el sistema).
 
 ### Desde fuente
 
@@ -60,7 +83,8 @@ python3 main.py
 - GTK 4, Libadwaita >= 1
 - `scxctl` (del sistema, específico del kernel)
 - `sudo` o `run0` con sesión activa
-- `stress-ng`, `hyperfine`, `gcc` + `make` (para benchmark compile; stress-ng necesario incluso en AppImage)
+- `stress-ng`, `hyperfine`, `gcc` + `make`
+(para benchmark compile; stress-ng necesario incluso en AppImage)
 
 ### Ejecutar tests
 
@@ -110,23 +134,26 @@ pytest
 
 ## Sistema de Puntuación
 
-El motor de scoring (`core/scoring.py`) evalúa los planificadores en 6 categorías de benchmark usando una fórmula ponderada multidimensional.
+El motor de scoring (`core/scoring.py`)
+evalúa los planificadores en 6 categorías de benchmark
+usando una fórmula ponderada multidimensional.
 
 ### 1. Métricas Crudas
 
 Cada benchmark produce tres valores:
 
 | Valor | Significado | Fuente |
-|-------|-------------|--------|
+| ------- | ------------- | -------- |
 | `val` | Métrica principal | Throughput (stress-ng) o latencia (hyperfine) |
 | `p95` | Variabilidad | Percentil 95 o desviación estándar |
 | `waste` | Ineficiencia | `(100 - cpu_usage)/100` o CV de hyperfine |
 
 ### 2. Score por Categoría
 
-Para cada tipo de test se calculan tres ratios contra el mejor planificador en esa categoría:
+Para cada tipo de test se calculan tres ratios
+contra el mejor planificador en esa categoría:
 
-```
+```text
 r_pot = my_val / best_val       (tipos throughput: cpu, threads, memory)
 r_pot = best_val / my_val       (tipos latencia: fork, compile, loaded)
 r_lat = best_p95 / my_p95       (siempre: menor variabilidad = mejor)
@@ -135,7 +162,7 @@ r_flu = max(0.01, 1.0 - waste)  (siempre: mayor uso de CPU = mejor)
 
 Se combinan con pesos ajustables:
 
-```
+```text
 cat_score = r_pot × P_pot + r_lat × P_lat + r_flu × P_flu
 ```
 
@@ -145,21 +172,26 @@ Pesos por defecto: **Potencia 45%**, **Respuesta 45%**, **Fluidez 10%**.
 
 Todos los scores de categoría se combinan con **media armónica**:
 
-```
+```text
 final = n / (1/s₁ + 1/s₂ + ... + 1/sₙ)
 ```
 
-La media armónica penaliza valores bajos en cualquier categoría, asegurando que se prefiera un planificador balanceado sobre uno que sobresalga en una sola métrica.
+La media armónica penaliza valores bajos en cualquier categoría,
+asegurando que se prefiera un planificador balanceado sobre uno
+que sobresalga en una sola métrica.
 
 El puntaje final se escala a porcentaje: `score = media_armónica × 100`.
 
 ### 4. Ranking Manual
 
-Para benchmarks manuales (pestaña Rendimiento), se aplica la misma fórmula, pero cada resultado se compara contra los demás resultados del mismo tipo de test en la sesión actual.
+Para benchmarks manuales (pestaña Rendimiento), se aplica la misma fórmula,
+pero cada resultado se compara contra los demás resultados
+del mismo tipo de test en la sesión actual.
 
 ## Licencia
 
-Este proyecto está licenciado bajo la GNU General Public License v3.0. Consulta el archivo [LICENSE](LICENSE) para más detalles.
+Este proyecto está licenciado bajo la GNU General Public License v3.0.
+Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
 ## Traducciones
 
