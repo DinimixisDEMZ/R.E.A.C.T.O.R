@@ -39,18 +39,42 @@ Proporciona una interfaz gráfica GTK4/Libadwaita para:
 ## Características
 
 - UI moderna con GTK4 y Libadwaita.
+  <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/5cbb2996-92bd-4b02-a112-72f7155bc23f" />
+
 - Control de schedulers SCX mediante `scxctl`.
+  <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/24fe4805-bedd-441c-a952-8099bd030df7" />
+
 - **AppImage autocontenido** con hyperfine, cyclictest incluidos.
 - Persistencia de historial en SQLite (`~/.local/share/scxctl/history.db`).
+  <img width="1000" height="1057" alt="image" src="https://github.com/user-attachments/assets/479d50b5-35ef-4301-b23b-29056b28754a" />
+
 - Comparación de resultados con ponderaciones ajustables (potencia, respuesta, fluidez).
+  <img width="1013" height="1345" alt="image" src="https://github.com/user-attachments/assets/d1964867-bd58-47ca-886d-938abc9dcdc7" />
+
 - Vista de logs técnicos y gráficos de tendencias con tabla comparativa nativa Gtk.ColumnView.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/03534ff5-6782-4182-a3f7-14eacd7403be" />
+
 - Verificación de compatibilidad con kernel y componentes.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/f9a2e4b4-bb70-4144-b06e-0e14dc838158" />
+
 - Diagnóstico en vivo: CPU, memoria, temperatura, planificador, eventos sched_ext.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/2a9be66b-c745-4a5b-a96d-c60287070541" />
+
 - Terminal scxtop embebida para monitoreo avanzado.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/88ec473c-2749-4960-b952-060dc8086e59" />
+
 - RadarChart de rendimiento para comparación visual rápida.
+  <img width="459" height="316" alt="image" src="https://github.com/user-attachments/assets/65e099d7-cc7f-4c1c-8059-774ecb9cead8" />
+
 - Internacionalización (i18n): español, inglés, francés, alemán, italiano, portugués.
+  <img width="578" height="173" alt="image" src="https://github.com/user-attachments/assets/663b1265-6eef-44aa-ac3b-73e7f97b5876" />
+
 - 57 tests automatizados (scoring, benchmark, database, thermal, hybrid).
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/2c8845d7-c60f-4fb9-96df-a13c35cd6b46" />
+
 - Documento de aprendizaje con patrones y buenas prácticas.
+  <img width="583" height="513" alt="image" src="https://github.com/user-attachments/assets/56e4fe09-bbd8-42ab-b2a3-47be145aca75" />
+
 
 ## Instalación
 
