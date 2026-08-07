@@ -1,15 +1,35 @@
 # R.E.A.C.T.O.R
 
-**Reactor Experimental Avanzado Concurrente Telúrico para Optimización de Rendimiento**
+<!--toc:start-->
+- [R.E.A.C.T.O.R](#reactor)
+  - [Features](#features)
+  - [Installation](#installation)
+    - [AppImage (recommended)](#appimage-recommended)
+    - [From source](#from-source)
+    - [Requirements (source mode)](#requirements-source-mode)
+    - [Running tests](#running-tests)
+  - [Project Structure](#project-structure)
+  - [Scoring System](#scoring-system)
+    - [1. Raw Metrics](#1-raw-metrics)
+    - [2. Per-Category Score](#2-per-category-score)
+    - [3. Final Score](#3-final-score)
+    - [4. Manual Ranking](#4-manual-ranking)
+  - [License](#license)
+  - [Translations](#translations)
+<!--toc:end-->
 
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue)](https://www.kernel.org/)
 [![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![GTK](https://img.shields.io/badge/gtk-4.0-47748F?logo=gnome&logoColor=white)](https://www.gtk.org/)
-[![Status](https://img.shields.io/badge/status-v1.0.5%20Release-blue)]()
-[![Build](https://img.shields.io/badge/build-AppImage-success)]()
+[![Status](https://img.shields.io/badge/status-v1.0.5%20Release-blue)](Status)
+[![Build](https://img.shields.io/badge/build-AppImage-success)](Sucess)
 
-A CPU scheduler benchmarking and optimization tool for Linux `scx` schedulers. Provides a GTK4/Libadwaita GUI for:
+Reactor Experimental Avanzado Concurrente Telúrico para Optimización de Rendimiento
+
+A CPU scheduler benchmarking and optimization tool for Linux `scx` schedulers.
+Provides a GTK4/Libadwaita GUI for:
+
 - inspecting available schedulers,
 - running performance benchmarks,
 - automatic detection of the best scheduler,
@@ -19,19 +39,43 @@ A CPU scheduler benchmarking and optimization tool for Linux `scx` schedulers. P
 ## Features
 
 - Modern UI with GTK4 and Libadwaita.
+  <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/5cbb2996-92bd-4b02-a112-72f7155bc23f" />
+
 - SCX scheduler control via `scxctl`.
+  <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/24fe4805-bedd-441c-a952-8099bd030df7" />
+
 - **Self-contained AppImage** with hyperfine, cyclictest bundled.
 - History persistence in SQLite (`~/.local/share/scxctl/history.db`).
+  <img width="1000" height="1057" alt="image" src="https://github.com/user-attachments/assets/479d50b5-35ef-4301-b23b-29056b28754a" />
+
 - Result comparison with adjustable weights (power, response, smoothness).
+  <img width="1013" height="1345" alt="image" src="https://github.com/user-attachments/assets/d1964867-bd58-47ca-886d-938abc9dcdc7" />
+
 - Technical logs and trend charts with native Gtk.ColumnView.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/03534ff5-6782-4182-a3f7-14eacd7403be" />
+
 - Kernel and component compatibility verification.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/f9a2e4b4-bb70-4144-b06e-0e14dc838158" />
+
 - Live diagnostics: CPU, memory, temperature, scheduler, sched_ext events.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/2a9be66b-c745-4a5b-a96d-c60287070541" />
+
 - Embedded scxtop terminal for advanced monitoring.
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/88ec473c-2749-4960-b952-060dc8086e59" />
+
 - Performance radar chart for quick visual comparison.
+  <img width="459" height="316" alt="image" src="https://github.com/user-attachments/assets/65e099d7-cc7f-4c1c-8059-774ecb9cead8" />
+
 - Internationalization (i18n) with gettext: Spanish, English, French, German, Italian, Portuguese.
+  <img width="578" height="173" alt="image" src="https://github.com/user-attachments/assets/663b1265-6eef-44aa-ac3b-73e7f97b5876" />
+
 - Info panels for each benchmark test explaining methodology and interpretation.
 - 57 automated tests (scoring, benchmark, database, thermal, hybrid).
+  <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/2c8845d7-c60f-4fb9-96df-a13c35cd6b46" />
+
 - Learning document with architecture patterns and best practices.
+  <img width="583" height="513" alt="image" src="https://github.com/user-attachments/assets/56e4fe09-bbd8-42ab-b2a3-47be145aca75" />
+
 
 ## Installation
 
@@ -132,7 +176,7 @@ Each benchmark produces three raw values:
 
 For each test type, three ratios are computed against the best scheduler in that category:
 
-```
+```text
 r_pot = my_val / best_val       (throughput types: cpu, threads, memory)
 r_pot = best_val / my_val       (latency types: fork, compile, loaded)
 r_lat = best_p95 / my_p95       (always: lower variability = better)
@@ -141,7 +185,7 @@ r_flu = max(0.01, 1.0 - waste)  (always: higher CPU usage = better)
 
 These are combined with user-adjustable weights:
 
-```
+```text
 cat_score = r_pot × W_pot + r_lat × W_lat + r_flu × W_flu
 ```
 
@@ -151,7 +195,7 @@ Default weights: **Potency 45%**, **Response 45%**, **Fluidity 10%**.
 
 All category scores are combined using the **harmonic mean**:
 
-```
+```text
 final = n / (1/s₁ + 1/s₂ + ... + 1/sₙ)
 ```
 
@@ -162,8 +206,6 @@ Final score is scaled to a percentage: `score = harmonic_mean × 100`.
 ### 4. Manual Ranking
 
 For manual benchmarks (Rendimiento tab), the same formula applies, but each result is compared against all other results of the same test type in the current session.
-
----
 
 ## License
 
