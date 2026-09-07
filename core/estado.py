@@ -35,6 +35,10 @@ class EstadoDeteccionAuto:
     segundos_actuales: float = 0.0
     segundos_objetivos: float = 0.0
     ganador_final: str | None = None
+    #: Planificador que gobernaba el equipo antes de iniciar el ciclo. Se guarda
+    #: para poder devolverlo si el usuario cancela o si algo falla: de lo
+    #: contrario el equipo quedaba con el último planificador probado.
+    estado_original: str | None = None
     desc_final: str = ""
     brutos_finales: dict = field(default_factory=dict)
     brutos_lock: threading.Lock = field(default_factory=threading.Lock)

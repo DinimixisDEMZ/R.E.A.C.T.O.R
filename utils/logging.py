@@ -3,12 +3,30 @@ Logging thread-safe para R.E.A.C.T.O.R.
 Todas las funciones aceptan tv_log (Gtk.TextView) y logs (bool).
 """
 
+import os
+import sys
+import traceback
 from datetime import datetime
 
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import GLib, Adw
+
+#: Con REACTOR_DEBUG=1 se imprime la traza completa de cada error registrado.
+DEPURACION = os.environ.get("REACTOR_DEBUG", "") not in ("", "0", "false")
+
+
+def registrar_error(contexto, error):
+    """Deja constancia de un error inesperado sin tumbar la interfaz.
+
+    Sustituye a los `print` sueltos que había repartidos por el código: acá el
+    mensaje siempre lleva el contexto y va a stderr, y con `REACTOR_DEBUG=1` se
+    acompaña de la traza completa para poder diagnosticar un informe de fallo.
+    """
+    print(f"[reactor] {contexto}: {type(error).__name__}: {error}", file=sys.stderr)
+    if DEPURACION:
+        traceback.print_exception(type(error), error, error.__traceback__)
 
 
 def log(tv, texto, nivel="info"):

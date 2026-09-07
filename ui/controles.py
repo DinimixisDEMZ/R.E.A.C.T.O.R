@@ -14,7 +14,8 @@ from gi.repository import Gtk, Adw, GLib
 from core.database import activar_db_temporal, desactivar_db_temporal, obtener_info_scheduler
 from ui.disponibilidad import recargar_disponibilidad_ui
 from utils.colores import generar_color_hash, dibujar_dot
-from utils.logging import mostrar_toast
+from utils.logging import mostrar_toast, registrar_error
+from core.sched_ext import nombre_corto
 from utils.iconos import establecer_iconos_idk
 from core.constantes import CARGANDO
 from utils.i18n import obtener_idiomas, establecer_idioma, establecer_usar_idioma_sistema, NOMBRES_IDIOMA, IDIOMA_ACTUAL, USAR_IDIOMA_SISTEMA, traducir
@@ -39,11 +40,17 @@ def configurar_ui_controles(win):
     win.combo_schedulers = Adw.ComboRow(title=traducir("Seleccionar Planificador"))
     win.modelo_schedulers = Gtk.StringList()
     win.combo_schedulers.set_model(win.modelo_schedulers)
-    win.combo_modos = Adw.ComboRow(title=traducir("Seleccionar Modo"))
-    win.combo_modos.set_model(Gtk.StringList.new(["auto", "powersave", "gaming", "lowlatency", "server"]))
+    # El modelo arranca vacío a propósito. Los modos pertenecen a `scx_loader`
+    # y dependen del scheduler elegido: se consultan con SchedulerModes() y se
+    # rellenan en win._sincronizar_modos(). La lista fija que había acá no sólo
+    # era inventada, sino que su orden no coincidía con el enum que viaja por
+    # D-Bus (0=Auto 1=Gaming 2=PowerSave 3=LowLatency 4=Server).
+    win.combo_modos = Adw.ComboRow(
+        title=traducir("Seleccionar Modo"),
+        subtitle=traducir("Perfiles preconfigurados de scx_loader"))
+    win.combo_modos.set_model(Gtk.StringList.new(["auto"]))
 
     win.combo_schedulers.connect("notify::selected-item", lambda *_: aplicar_cambio_scheduler(win))
-    win.combo_modos.connect("notify::selected-item", lambda *_: aplicar_cambio_scheduler(win))
 
     grupo_config.add(win.combo_schedulers)
     grupo_config.add(win.combo_modos)
@@ -224,18 +231,27 @@ def configurar_ui_controles(win):
     header = Adw.HeaderBar()
 
     caja_gestion = Gtk.Box(spacing=6)
-    for icon, acc, cls, tool in [
-        ("media-playback-start-symbolic", "start", "success", traducir("Iniciar")),
-        ("media-playback-stop-symbolic", "stop", "destructive-action", traducir("Detener"))
+    win._botones_gestion = {}
+    for icono, accion, clase, ayuda, capacidad in [
+        ("media-playback-start-symbolic", "aplicar", "success", traducir("Aplicar el planificador seleccionado"), "aplicar"),
+        ("media-playback-stop-symbolic", "detener", "destructive-action", traducir("Detener el planificador activo"), "detener"),
+        ("view-refresh-symbolic", "reiniciar", "", traducir("Reiniciar el planificador activo"), "reiniciar"),
     ]:
-        b = Gtk.Button(icon_name=icon, tooltip_text=tool, css_classes=[cls] if cls else [])
-        b.connect("clicked", lambda btn, a=acc: ejecutar_mantenimiento(win, btn, a))
+        b = Gtk.Button(icon_name=icono, tooltip_text=ayuda,
+                       css_classes=[clase] if clase else ["flat"])
+        b.connect("clicked", lambda btn, a=accion: ejecutar_mantenimiento(win, btn, a))
+        # No todos los backends saben hacer todo: sin `scx_loader` no existe
+        # "reiniciar". Se deshabilita el botón en vez de dejar que falle.
+        b.set_sensitive(win.scx.puede(capacidad))
+        win._botones_gestion[accion] = b
         caja_gestion.append(b)
 
     header.pack_start(caja_gestion)
 
+    # Refrescar sólo relee el estado. Antes ejecutaba un "restart", así que el
+    # botón de actualizar reiniciaba de verdad el planificador del sistema.
     btn_actualizar = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text=traducir("Actualizar Estado"), css_classes=["flat"])
-    btn_actualizar.connect("clicked", lambda btn: ejecutar_mantenimiento(win, btn, "restart"))
+    btn_actualizar.connect("clicked", lambda btn: win.sincronizar_sistema())
     header.pack_end(btn_actualizar)
 
     view = Adw.ToolbarView(content=pref_page)
@@ -243,75 +259,98 @@ def configurar_ui_controles(win):
     win.pag_controles.set_child(view)
 
 
-def ejecutar_mantenimiento(win, btn, acc):
-    """Ejecuta start/stop/restart de scxctl."""
+def ejecutar_mantenimiento(win, btn, accion):
+    """Ejecuta aplicar / detener / reiniciar sobre el planificador del sistema."""
     def _proceder():
         def _ejecutar():
             try:
-                cmd_base = ["scxctl", acc]
-                if acc == "start":
-                    item = win.combo_schedulers.get_selected_item()
-                    if item:
-                        cmd_base += ["-s", item.get_string()]
+                if accion == "aplicar":
+                    sched = win.scheduler_seleccionado()
+                    if not sched:
+                        mostrar_toast(win, traducir("Elegí un planificador primero"),
+                                      prefijo=traducir("Aviso"))
+                        return
                     modo_item = win.combo_modos.get_selected_item()
-                    if modo_item:
-                        cmd_base += ["-m", modo_item.get_string()]
-
-                result = win.scx.ejecutar_con_sudo(cmd_base)
-
-                if result.returncode != 0:
-                    error_msg = result.stderr.strip().lower()
-                    if acc == "start" and ("already" in error_msg or "running" in error_msg or not error_msg):
-                        mensaje = traducir("Ya se está ejecutando")
-                    elif acc == "stop" and ("not running" in error_msg or not error_msg):
-                        mensaje = traducir("No hay ningún planificador activo")
-                    else:
-                        mensaje = result.stderr.strip() or traducir("Comando fallido")
-
-                    mostrar_toast(win, mensaje, prefijo=traducir("Aviso"))
-            except (subprocess.SubprocessError, OSError) as e:
+                    modo = modo_item.get_string() if modo_item else "auto"
+                    resultado = win.scx.aplicar(sched, modo)
+                elif accion == "detener":
+                    resultado = win.scx.detener()
+                else:
+                    resultado = win.scx.reiniciar()
+                _informar_resultado(win, resultado, accion)
+            except Exception as e:
+                registrar_error(f"ejecutar_mantenimiento({accion})", e)
                 mostrar_toast(win, str(e), prefijo=traducir("Error"))
             finally:
                 GLib.idle_add(win.sincronizar_sistema)
 
         threading.Thread(target=_ejecutar, daemon=True).start()
 
-    win.solicitar_sudo_si_necesario(_proceder)
+    win.ejecutar_accion_privilegiada(_proceder)
+
+
+#: Mensajes por código de fallo. Distinguirlos importa: "cancelaste el diálogo"
+#: y "el kernel no soporta sched_ext" exigen respuestas del usuario opuestas.
+_MENSAJES_FALLO = {
+    "no_autorizado": "No se concedieron los permisos necesarios",
+    "cancelado": "Se canceló la autenticación",
+    "sin_servicio": "El servicio scx_loader no está disponible en este equipo",
+    "sin_backend": "Este equipo no permite controlar planificadores",
+    "sin_elevacion": "No hay forma de obtener privilegios (falta pkexec o run0)",
+    "no_instalado": "Ese planificador no está instalado en el sistema",
+    "no_soportado": "El backend activo no soporta esta operación",
+    "tiempo_agotado": "La operación excedió el tiempo de espera",
+    "sin_scheduler": "No hay ningún planificador activo",
+}
+
+
+def _informar_resultado(win, resultado, accion):
+    """Traduce un Resultado del backend a un aviso comprensible."""
+    if resultado.ok:
+        etiquetas = {
+            "aplicar": traducir("Planificador aplicado"),
+            "detener": traducir("Planificador detenido"),
+            "reiniciar": traducir("Planificador reiniciado"),
+        }
+        mostrar_toast(win, etiquetas.get(accion, traducir("Listo")))
+        return
+    plantilla = _MENSAJES_FALLO.get(resultado.codigo)
+    mensaje = traducir(plantilla) if plantilla else (
+        resultado.mensaje or traducir("La operación falló"))
+    # El detalle técnico se conserva, pero no encabeza el aviso.
+    if plantilla and resultado.mensaje:
+        mensaje = f"{mensaje} — {resultado.mensaje}"
+    mostrar_toast(win, mensaje, prefijo=traducir("Aviso"))
 
 
 def aplicar_cambio_scheduler(win, btn=None):
-    """Aplica el cambio de scheduler/modo seleccionado."""
+    """Reacciona a un cambio de selección en los combos.
+
+    Cambiar la selección ya NO aplica el planificador: aplicar es una acción
+    privilegiada e invasiva, y dispararla con el simple scroll del ratón sobre
+    un `Adw.ComboRow` era un accidente esperando a ocurrir. Ahora sólo se
+    actualiza la lista de modos válidos para el scheduler elegido y se resalta
+    el botón de aplicar cuando la selección difiere de lo que corre.
+    """
     if win.en_sincronizacion:
         return
 
-    sched_item = win.combo_schedulers.get_selected_item()
-    modo_item = win.combo_modos.get_selected_item()
-
-    if not sched_item or not modo_item:
+    sched = win.scheduler_seleccionado()
+    if not sched:
         return
 
-    sched = sched_item.get_string()
-    modo = modo_item.get_string()
+    win.en_sincronizacion = True
+    try:
+        win._sincronizar_modos(None, None)
+    except Exception as e:
+        registrar_error("aplicar_cambio_scheduler", e)
+    finally:
+        win.en_sincronizacion = False
 
-    def _proceder():
-        def _aplicar():
-            try:
-                sc_actual, _ = win.scx.obtener_estado()
-                if sc_actual:
-                    cmd = ["scxctl", "switch", "-s", sched, "-m", modo]
-                else:
-                    cmd = ["scxctl", "start", "-s", sched, "-m", modo]
-                result = win.scx.ejecutar_con_sudo(cmd)
-
-                if result.returncode != 0:
-                    mostrar_toast(win, result.stderr.strip() or traducir('Cambio fallido'), prefijo=traducir("Error"))
-                else:
-                    mostrar_toast(win, traducir("{} [{}]").format(sched, modo), prefijo=traducir("Aplicado"))
-            except (subprocess.SubprocessError, OSError) as e:
-                mostrar_toast(win, str(e), prefijo=traducir("Error"))
-            finally:
-                GLib.idle_add(win.sincronizar_sistema)
-
-        threading.Thread(target=_aplicar, daemon=True).start()
-
-    win.solicitar_sudo_si_necesario(_proceder)
+    boton = getattr(win, "_botones_gestion", {}).get("aplicar")
+    if boton is not None:
+        pendiente = sched != win.active_sc
+        boton.set_css_classes(["suggested-action"] if pendiente else ["success"])
+        boton.set_tooltip_text(
+            traducir("Aplicar {}").format(nombre_corto(sched)) if pendiente
+            else traducir("Ya está aplicado"))

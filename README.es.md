@@ -41,11 +41,11 @@ Proporciona una interfaz gráfica GTK4/Libadwaita para:
 - UI moderna con GTK4 y Libadwaita.
   <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/5cbb2996-92bd-4b02-a112-72f7155bc23f" />
 
-- Control de schedulers SCX mediante `scxctl`.
+- Control de planificadores SCX por D-Bus (`org.scx.Loader`, autorizado por polkit), con alternativas a `scxctl` y a ejecutar directamente los binarios.
   <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/24fe4805-bedd-441c-a952-8099bd030df7" />
 
 - **AppImage autocontenido** con hyperfine, cyclictest incluidos.
-- Persistencia de historial en SQLite (`~/.local/share/scxctl/history.db`).
+- Persistencia de historial en SQLite (`~/.local/share/reactor/history.db`).
   <img width="1000" height="1057" alt="image" src="https://github.com/user-attachments/assets/479d50b5-35ef-4301-b23b-29056b28754a" />
 
 - Comparación de resultados con ponderaciones ajustables (potencia, respuesta, fluidez).
@@ -69,7 +69,7 @@ Proporciona una interfaz gráfica GTK4/Libadwaita para:
 - Internacionalización (i18n): español, inglés, francés, alemán, italiano, portugués.
   <img width="578" height="173" alt="image" src="https://github.com/user-attachments/assets/663b1265-6eef-44aa-ac3b-73e7f97b5876" />
 
-- 57 tests automatizados (scoring, benchmark, database, thermal, hybrid).
+- 240 pruebas automatizadas (scoring, benchmark, base de datos, térmica, híbridos, hardware, sched_ext, backends de control, dimensionado, verificación e integridad).
   <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/2c8845d7-c60f-4fb9-96df-a13c35cd6b46" />
 
 - Documento de aprendizaje con patrones y buenas prácticas.
@@ -103,12 +103,29 @@ python3 main.py
 
 ### Requisitos (modo fuente)
 
-- Linux con Python >= 3.10
-- GTK 4, Libadwaita >= 1
-- `scxctl` (del sistema, específico del kernel)
-- `sudo` o `run0` con sesión activa
-- `stress-ng`, `hyperfine`, `gcc` + `make`
-(para benchmark compile; stress-ng necesario incluso en AppImage)
+**Obligatorio — sin esto la aplicación no arranca:**
+
+- Linux con Python >= 3.11
+- GTK 4 y Libadwaita >= 1 (con sus datos de GObject Introspection)
+
+**Opcional — cada cosa limita una función concreta, y la aplicación te dice
+cuál al arrancar:**
+
+| Componente | Si falta |
+|---|---|
+| Un kernel con `CONFIG_SCHED_CLASS_EXT` (6.12+) | No se pueden aplicar planificadores scx; medir el planificador del sistema y el historial siguen funcionando |
+| Los planificadores scx (`scx-scheds` en Arch, `kernel-scx-scheds` en Fedora) | No hay nada que comparar |
+| `scx_loader` o `scxctl` (`scx-tools` en Arch) | Se recurre a lanzar los binarios directamente con `systemd-run` |
+| `pkexec` o `run0` | Las operaciones privilegiadas no están disponibles |
+| `stress-ng` | Las pruebas de CPU, carga mixta y sincronización no están disponibles |
+| `hyperfine` | Las pruebas de latencia no están disponibles |
+| `gcc` + `make` | La prueba de compilación paralela no está disponible |
+| Vte (compilado para GTK 4) | La terminal empotrada de `scxtop` no está disponible |
+
+> **Nota:** en casi todas las distribuciones, `scxctl` y `scx_loader` vienen en
+> un paquete **distinto** al de los planificadores, y upstream se movieron a su
+> propio repositorio (`sched-ext/scx-loader`). R.E.A.C.T.O.R no necesita ninguno
+> de los dos.
 
 ### Ejecutar tests
 
@@ -122,7 +139,10 @@ pytest
 - `app.py` — ventana principal y configuración global.
 - `pyproject.toml` — configuración del proyecto, dependencias y herramientas.
 - `core/` — lógica de negocio:
-  - `scx.py` — interacción con `scxctl`.
+  - `scx.py` — control de planificadores con backends intercambiables (D-Bus, `scxctl`, directo, simulado).
+  - `sched_ext.py` — observación de `/sys/kernel/sched_ext` sin privilegios.
+  - `hardware.py` — topología de CPU, núcleos híbridos P/E, memoria, energía y chasis.
+  - `dimensionado.py` — parámetros de las pruebas derivados del equipo.
   - `benchmark.py` — benchmarks con stress-ng.
   - `hybrid.py` — benchmarks de latencia con hyperfine.
   - `scoring.py` — ranking y scores con media armónica.
@@ -152,7 +172,7 @@ pytest
   - `legend.py` — chips de leyenda interactivos.
 - `appimage/` — archivos de lanzamiento AppImage (AppRun, desktop, icono).
 - `data/icons/` — 43 iconos SVG bundleados.
-- `tests/` — 57 tests automatizados.
+- `tests/` — 240 pruebas automatizadas.
 - `scripts/` — scripts de build y traducción.
 - `po/` — archivos de traducción (.po/.mo).
 

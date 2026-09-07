@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)"
 readme = "README.md"
 license = "GPL-3.0-only"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "REACTOR Contributors" },
 ]
@@ -16,9 +16,11 @@ keywords = ["scheduler", "benchmark", "scx", "linux", "performance"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: X11 Applications :: GTK",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Benchmark",
     "Topic :: System :: Operating System Kernels :: Linux",
 ]
@@ -42,18 +44,26 @@ version = {attr = "core.constantes.VERSION"}
 [tool.setuptools.packages.find]
 include = ["core*", "ui*", "utils*", "widgets*"]
 
-[tool.setuptools.package-data]
-reactor = ["data/icons/*"]
-include = ["core*", "ui*", "utils*", "widgets*"]
+# `main.py` y `app.py` viven en la raíz, no dentro de un paquete. Sin declararlos
+# aquí no entraban en el wheel, así que `pip install .` instalaba el punto de
+# entrada `reactor` y ese punto de entrada no podía importar `main`.
+[tool.setuptools]
+py-modules = ["main", "app"]
+
+[tool.setuptools.data-files]
+"share/reactor/data/icons" = ["data/icons/reactor.gresource"]
+"share/applications" = ["appimage/R.E.A.C.T.O.R.desktop"]
+"share/icons/hicolor/scalable/apps" = ["appimage/reactor.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-q"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]

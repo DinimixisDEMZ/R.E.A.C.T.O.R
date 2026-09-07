@@ -7,8 +7,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: R.E.A.C.T.O.R 1.0\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-26 18:18-0400\n"
+"Report-Msgid-Bugs-To: https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues\n"
+"POT-Creation-Date: 2026-09-06 22:24-0600\n"
 "PO-Revision-Date: 2026-07-26 13:20-0400\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: Português Brasileiro <pt_BR@li.org>\n"
@@ -18,19 +18,227 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: main.py:37
-msgid "Gestión de planificadores SCX"
+#: app.py:54 app.py:205 app.py:315
+msgid "R.E.A.C.T.O.R"
+msgstr "R.E.A.C.T.O.R"
+
+#: app.py:97
+msgid "Ver detalles"
+msgstr ""
+
+#: app.py:122 app.py:245
+msgid "Controles"
+msgstr ""
+
+#: app.py:124 app.py:246
+msgid "Rendimiento"
+msgstr ""
+
+#: app.py:126 app.py:247
+msgid "Automatización"
+msgstr ""
+
+#: app.py:128 app.py:248
+msgid "Disponibilidad"
+msgstr ""
+
+#: app.py:130 app.py:250
+msgid "Historial"
+msgstr ""
+
+#: app.py:182
+msgid "Entorno actualizado"
+msgstr ""
+
+#: app.py:199
+#, python-brace-format
+msgid "La aplicación funciona con limitaciones ({} avisos)"
+msgstr ""
+
+#: app.py:213
+msgid "Monitoreo térmico del sistema"
+msgstr "Usar idioma do sistema"
+
+#: app.py:218
+msgid "<b>Integridad Térmica</b>"
+msgstr ""
+
+#: app.py:219
+msgid "Analizando..."
+msgstr ""
+
+#: app.py:224
+msgid ""
+"Este sistema permite realizar pruebas más justas sin penalizaciones por "
+"sobrecalentamiento."
+msgstr ""
+
+#: app.py:238
+msgid "Acerca de"
+msgstr ""
+
+#: app.py:249 ui/diagnostico/pagina.py:68
+msgid "Diagnóstico"
+msgstr ""
+
+#: app.py:285
+msgid "Sin sensor térmico disponible"
+msgstr ""
+
+#: app.py:287
+msgid ""
+"Este equipo no expone la temperatura del CPU. Las pruebas se ejecutan igual, "
+"pero no se puede descartar el efecto del calor."
+msgstr ""
+
+#: app.py:298
+msgid "Sistema estable"
+msgstr ""
+
+#: app.py:299
+msgid "Estado: Estable"
+msgstr ""
+
+#: app.py:303
+msgid "Temperatura elevada"
+msgstr ""
+
+#: app.py:304
+msgid "Estado: Elevado"
+msgstr ""
+
+#: app.py:308
+msgid "Cerca del límite térmico"
+msgstr ""
+
+#: app.py:309
+msgid "Estado: CRÍTICO"
+msgstr ""
+
+#: app.py:317
+#, fuzzy
+#| msgid ""
+#| "Reactor de Experimentación Avanzada Concurrente Telúrico para "
+#| "Optimización de Rendimiento\n"
+#| "Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)."
+msgid ""
+"Reactor de Experimentación Avanzada Concurrente Telúrico para Optimización "
+"de Rendimiento\n"
+"Benchmarking y optimización de planificadores sched-ext (SCX) para Linux."
+msgstr ""
+"Ferramenta de gerenciamento e benchmarking para planejadores sched-ext (SCX)."
+
+#: app.py:318 app.py:335
+msgid "DinimixisDEMZ"
+msgstr ""
+
+#: app.py:322
+msgid ""
+"<p>R.E.A.C.T.O.R 1.0 — Refactorización y AppImage.</p>\n"
+"<ul>\n"
+"<li>Refactorización completa del código</li>\n"
+"<li>Aplanado de historial git</li>\n"
+"<li>57 tests automatizados</li>\n"
+"<li>AppImage autónomo con hyperfine, cyclictest</li>\n"
+"<li>Verificación del sistema con soporte run0</li>\n"
+"<li>i18n: español, inglés, francés, alemán, italiano, portugués</li>\n"
+"<li>Scoring: media armónica con pesos ajustables</li>\n"
+"</ul>"
+msgstr ""
+
+#: app.py:334
+msgid "Desarrollo y Diseño"
+msgstr ""
+
+#: app.py:337
+msgid "Infraestructura"
+msgstr ""
+
+#: app.py:338
+msgid "Dark Anubis"
+msgstr ""
+
+#: app.py:340
+#, fuzzy
+#| msgid "Ezku (Beta Tester)"
+msgid "Beta Testers"
+msgstr "Ezku (Beta Tester)"
+
+#: app.py:341
+msgid "Gekko"
+msgstr ""
+
+#: app.py:342
+msgid "MD1000 (Emedé)"
+msgstr ""
+
+#: app.py:343
+msgid "SunnyDeus"
+msgstr ""
+
+#: app.py:344
+msgid "JMX369"
+msgstr ""
+
+#: app.py:345
+msgid "Ezku"
+msgstr ""
+
+#: app.py:347
+msgid "Página Web / GitHub"
+msgstr "Site / GitHub"
+
+#: app.py:349
+msgid "Licencia"
+msgstr "Licença"
+
+#: app.py:350
+msgid "© 2026 El proyecto R.E.A.C.T.O.R y sus desarrolladores."
+msgstr "© 2026 O projeto R.E.A.C.T.O.R e seus desenvolvedores."
+
+#: app.py:353
+msgid "Proveedor"
+msgstr ""
+
+#: app.py:354
+msgid "OpenCode (Anomaly)"
+msgstr ""
+
+#: app.py:356
+#, fuzzy
+#| msgid "Agentes de IA"
+msgid "Modelos de IA"
+msgstr "Agentes de IA"
+
+#: app.py:357
+msgid "Big Pickle (GLM4.2)"
+msgstr ""
+
+#: app.py:358
+msgid "DeepSeek V4 Flash/Pro"
+msgstr ""
+
+#: app.py:411 ui/diagnostico/monitoreo.py:173
+#, fuzzy
+#| msgid "Planificadores"
+msgid "Planificador del Sistema"
 msgstr "Gerenciamento de planejadores SCX"
 
-#: main.py:38
-msgid "Benchmarks de estrés"
-msgstr "Benchmarks de estresse"
+#: app.py:439
+msgid "Estado no disponible"
+msgstr ""
 
-#: main.py:39
-msgid "Benchmarks de precisión"
-msgstr "Benchmarks de precisão"
+#: app.py:460
+msgid ""
+"Este equipo no permite controlar planificadores. Revisá la verificación del "
+"sistema para ver por qué."
+msgstr ""
 
-#: main.py:43
+#: app.py:462
+msgid "No disponible"
+msgstr ""
+
+#: main.py:37
 #, python-brace-format
 msgid ""
 "Sistema operativo incompatible: {}\n"
@@ -41,13 +249,51 @@ msgstr ""
 
 #: main.py:66
 msgid ""
-"No se encontró run0 ni sudo. Las operaciones que requieran privilegios no "
-"estarán disponibles."
+"Este kernel no tiene sched_ext (CONFIG_SCHED_CLASS_EXT). No se pueden "
+"aplicar planificadores scx, pero sí medir el planificador actual del sistema "
+"y consultar el historial."
+msgstr ""
+
+#: main.py:73
+msgid ""
+"El kernel soporta sched_ext pero no hay ningún planificador scx instalado. "
+"Instalá el paquete de tu distribución (en Arch: scx-scheds; en Fedora: "
+"kernel-scx-scheds)."
+msgstr ""
+
+#: main.py:78
+msgid ""
+"No se encontró scxctl ni el servicio scx_loader. Se usará la ejecución "
+"directa de los planificadores. Para el control completo instalá el paquete "
+"del loader (en Arch: scx-tools)."
+msgstr ""
+
+#: main.py:84
+#, fuzzy
+#| msgid ""
+#| "No se encontró run0 ni sudo. Las operaciones que requieran privilegios no "
+#| "estarán disponibles."
+msgid ""
+"No se encontró pkexec, run0 ni sudo. Las operaciones que requieren "
+"privilegios no estarán disponibles."
 msgstr ""
 "Nenhum run0 ou sudo encontrado. Operações que exigem privilégios não estarão "
 "disponíveis."
 
-#: main.py:81
+#: main.py:88
+msgid "Benchmarks de estrés"
+msgstr "Benchmarks de estresse"
+
+#: main.py:89
+msgid "Benchmarks de precisión"
+msgstr "Benchmarks de precisão"
+
+#: main.py:93
+#, python-brace-format
+msgid "{} no encontrado. Necesario para: {}."
+msgstr ""
+
+#: main.py:106
 msgid ""
 "Vte no encontrado. La pestaña scxtop no estará disponible. Instale el "
 "paquete gir1.2-vte-3.91 o similar."
@@ -55,19 +301,19 @@ msgstr ""
 "Vte não encontrado. A aba scxtop não estará disponível. Instale o pacote "
 "gir1.2-vte-3.91 ou similar."
 
-#: main.py:89
+#: main.py:114
 msgid "Cairo no encontrado. Los gráficos radar no se mostrarán."
 msgstr "Cairo não encontrado. Os gráficos radar não serão exibidos."
 
-#: main.py:126
-msgid "Dependencias faltantes"
-msgstr "Dependências Ausentes"
-
-#: main.py:126
+#: main.py:151
 msgid "Advertencias"
 msgstr "Avisos"
 
-#: main.py:128
+#: main.py:151
+msgid "Dependencias faltantes"
+msgstr "Dependências Ausentes"
+
+#: main.py:153
 msgid ""
 "No se cumplen los requisitos necesarios para ejecutar todas las "
 "funcionalidades del gestor."
@@ -75,485 +321,968 @@ msgstr ""
 "Os requisitos necessários para executar todas as funcionalidades do "
 "gerenciador não foram atendidos."
 
-#: main.py:131
+#: main.py:156
 msgid ""
 "La aplicación puede iniciarse, pero algunas funcionalidades estarán "
 "limitadas."
 msgstr ""
 "O aplicativo pode iniciar, mas algumas funcionalidades estarão limitadas."
 
-#: main.py:159
+#: main.py:184
 msgid "Continuar de todas formas"
 msgstr "Continuar Mesmo Assim"
 
-#: main.py:168
+#: main.py:193
 msgid "Cerrar Aplicación"
 msgstr "Fechar Aplicativo"
 
-#: main.py:168
+#: main.py:193
 msgid "Salir"
 msgstr "Sair"
 
-#: app.py:49 app.py:153 app.py:244
-msgid "R.E.A.C.T.O.R"
-msgstr "R.E.A.C.T.O.R"
-
-#: app.py:87 app.py:193
-msgid "Controles"
+#: ui/automatizacion/__init__.py:56
+#, python-brace-format
+msgid "{}/{} seleccionados"
 msgstr ""
 
-#: app.py:89 app.py:194
-msgid "Rendimiento"
+#: ui/automatizacion/__init__.py:97
+msgid "Detección Inteligente"
 msgstr ""
 
-#: app.py:91 app.py:195
-msgid "Automatización"
+#: ui/automatizacion/__init__.py:97
+msgid "Escanear rendimiendo general de cada planificador y obtener el mejor."
 msgstr ""
 
-#: app.py:93 app.py:196
-msgid "Disponibilidad"
+#: ui/automatizacion/__init__.py:107 ui/automatizacion/deteccion.py:439
+#: ui/automatizacion/historial.py:190 ui/automatizacion/historial.py:265
+msgid "Determinar"
 msgstr ""
 
-#: app.py:95 app.py:198
-msgid "Historial"
+#: ui/automatizacion/__init__.py:113
+msgid "Planificadores a analizar"
 msgstr ""
 
-#: app.py:148
-msgid "Entorno actualizado"
+#: ui/automatizacion/__init__.py:119
+msgid "Marcar todos"
 msgstr ""
 
-#: app.py:161
-msgid "Monitoreo térmico del sistema"
-msgstr "Usar idioma do sistema"
-
-#: app.py:166
-msgid "<b>Integridad Térmica</b>"
+#: ui/automatizacion/__init__.py:120
+msgid "Desmarcar todos"
 msgstr ""
 
-#: app.py:167
-msgid "Analizando..."
+#: ui/automatizacion/__init__.py:124
+msgid "Seleccionar:"
 msgstr ""
 
-#: app.py:172
-msgid ""
-"Este sistema permite realizar pruebas más justas sin penalizaciones por "
-"sobrecalentamiento."
+#: ui/automatizacion/__init__.py:133
+msgid "Resultado del Diagnóstico"
 msgstr ""
 
-#: app.py:186
-msgid "Acerca de"
+#: ui/automatizacion/__init__.py:134 ui/automatizacion/deteccion.py:466
+msgid "Esperando al escaneo..."
 msgstr ""
 
-#: app.py:197 ui/diagnostico/pagina.py:68
-msgid "Diagnóstico"
+#: ui/automatizacion/__init__.py:134 ui/automatizacion/deteccion.py:455
+#: ui/automatizacion/deteccion.py:465
+msgid "Motor en reposo"
 msgstr ""
 
-#: app.py:220
-msgid "Sistema estable"
+#: ui/automatizacion/__init__.py:140
+msgid "Registro de Optimización"
 msgstr ""
 
-#: app.py:221
-msgid "Estado: Estable"
+#: ui/automatizacion/__init__.py:157 ui/rendimiento.py:130
+msgid "Terminal de Análisis"
 msgstr ""
 
-#: app.py:227
-msgid "Temperatura elevada"
+#: ui/automatizacion/__init__.py:158 ui/rendimiento.py:131
+msgid "Registro técnico detallado"
 msgstr ""
 
-#: app.py:228
-msgid "Estado: Elevado"
+#: ui/automatizacion/__init__.py:165
+msgid "Análisis en Tiempo Real"
 msgstr ""
 
-#: app.py:234
-msgid "¡LIMITADOR TÉRMICO ACTIVO!"
+#: ui/automatizacion/__init__.py:182
+msgid "Acerca del Radar"
 msgstr ""
 
-#: app.py:235
-msgid "Estado: CRÍTICO"
+#: ui/automatizacion/__init__.py:189
+msgid "Interpretación del Radar Comparativo"
 msgstr ""
 
-#: app.py:246
-msgid ""
-"Reactor de Experimentación Avanzada Concurrente Telúrico para Optimización "
-"de Rendimiento\n"
-"Herramienta de gestión y benchmarking para schedulers sched-ext (SCX)."
+#: ui/automatizacion/__init__.py:204
+msgid "Categorías"
 msgstr ""
-"Ferramenta de gerenciamento e benchmarking para planejadores sched-ext (SCX)."
 
-#: app.py:247
-msgid "Equipo de Desarrollo R.E.A.C.T.O.R"
-msgstr "Equipe de Desenvolvimento R.E.A.C.T.O.R"
-
-#: app.py:249
-msgid "DinimixisDEMZ (Lead Developer/Lead Designer)"
-msgstr "DinimixisDEMZ (Lead Developer/Lead Designer)"
-
-#: app.py:250
-msgid ""
-"Dark Anubis (IT Technical Specialist, System Administrator, DevOps & Network "
-"Tech.)"
+#: ui/automatizacion/__init__.py:217
+msgid "Latencia (menor = mejor)"
 msgstr ""
-"Dark Anubis (IT Technical Specialist, System Administrator, DevOps & Network "
-"Tech.)"
 
-#: app.py:251
-msgid "MD1000[Emedé] (Beta Tester/Designer)"
-msgstr "MD1000[Emedé] (Beta Tester/Designer)"
-
-#: app.py:252
-msgid "SunnyDeus (Beta Tester)"
-msgstr "SunnyDeus (Beta Tester)"
-
-#: app.py:253
-msgid "JMX369 (Beta Tester)"
-msgstr "JMX369 (Beta Tester)"
-
-#: app.py:254
-msgid "Ezku (Beta Tester)"
-msgstr "Ezku (Beta Tester)"
-
-#: app.py:255
-msgid "Gekko (Designer)"
-msgstr "Gekko (Designer)"
-
-#: app.py:259
-msgid ""
-"<p>R.E.A.C.T.O.R 1.0 — Primera versión estable.</p>\n"
-"<ul>\n"
-"  <li>Tests automatizados (49 tests cubriendo scoring, benchmark, database y "
-"thermal).</li>\n"
-"  <li>Split del módulo automatización en 4 submódulos.</li>\n"
-"  <li>Refactorización del god-object VentanaSimple con dataclasses de estado."
-"</li>\n"
-"  <li>pyproject.toml con configuración estándar de Python.</li>\n"
-"  <li>Constantes compartidas centralizadas en core/constantes.py.</li>\n"
-"  <li>35 excepciones genéricas reemplazadas por tipos específicos.</li>\n"
-"  <li>Scoring renombrado: fairness → waste para mayor claridad.</li>\n"
-"</ul>"
+#: ui/automatizacion/__init__.py:222
+msgid "Rendimiento por núcleo (mayor = mejor)"
 msgstr ""
-"<p>R.E.A.C.T.O.R 1.0 — Primeira versão estável.</p>\n"
-"<ul>\n"
-"  <li>Testes automatizados (49 testes cobrindo scoring, benchmark, database "
-"e thermal).</li>\n"
-"  <li>Divisão do módulo de automação em 4 submódulos.</li>\n"
-"  <li>Refatoração do god-object VentanaSimple com dataclasses de estado.</"
-"li>\n"
-"  <li>pyproject.toml com configuração padrão do Python.</li>\n"
-"  <li>Constantes compartilhadas centralizadas em core/constantes.py.</li>\n"
-"  <li>35 exceções genéricas substituídas por tipos específicos.</li>\n"
-"  <li>Scoring renomeado: fairness → waste para maior clareza.</li>\n"
-"</ul>"
 
-#: app.py:271
-msgid "Página Web / GitHub"
-msgstr "Site / GitHub"
+#: ui/automatizacion/__init__.py:227
+msgid "Eficiencia combinada (mayor = mejor)"
+msgstr ""
 
-#: app.py:273
-msgid "Licencia"
+#: ui/automatizacion/__init__.py:236
+msgid "Puntuación Final"
+msgstr ""
+
+#: ui/automatizacion/__init__.py:252
+msgid "Fórmula"
+msgstr ""
+
+#: ui/automatizacion/__init__.py:277
+msgid "Cómo leer este gráfico"
+msgstr ""
+
+#: ui/automatizacion/__init__.py:282
+msgid "Ajustar Pesos"
+msgstr ""
+
+#: ui/automatizacion/__init__.py:289
+msgid "Balanceado"
+msgstr ""
+
+#: ui/automatizacion/__init__.py:290 ui/automatizacion/__init__.py:316
+msgid "Potencia"
 msgstr "Licença"
 
-#: app.py:274
-msgid "© 2026 El proyecto R.E.A.C.T.O.R y sus desarrolladores."
-msgstr "© 2026 O projeto R.E.A.C.T.O.R e seus desenvolvedores."
-
-#: app.py:277
-msgid "Agentes de IA"
-msgstr "Agentes de IA"
-
-#: app.py:278
-msgid "opencode (AI Software Engineer - big-pickle)"
-msgstr "opencode (AI Software Engineer - big-pickle)"
-
-#: app.py:279
-msgid "Antigravity (AI Assistant)"
-msgstr "Antigravity (AI Assistant)"
-
-#: app.py:280
-msgid "DeepSeek V4 Flash (AI Software Engineer)"
-msgstr "DeepSeek V4 Flash (AI Software Engineer)"
-
-#: app.py:308 ui/diagnostico/monitoreo.py:164
-msgid "Planificador Base (Predeterminado)"
+#: ui/automatizacion/__init__.py:291 ui/automatizacion/__init__.py:317
+msgid "Respuesta"
 msgstr ""
 
-#: app.py:314
-msgid "scxctl no encontrado"
+#: ui/automatizacion/__init__.py:292 ui/automatizacion/__init__.py:318
+msgid "Fluidez"
 msgstr ""
 
-#: ui/disponibilidad.py:21 ui/disponibilidad.py:28
+#: ui/automatizacion/__init__.py:307
+msgid ""
+"Modifique la importancia de cada dimensión. Los resultados se recalculan al "
+"instante."
+msgstr ""
+
+#: ui/automatizacion/__init__.py:340
+msgid ""
+"Procure no tener nada abierto\n"
+"para no afectar el análisis."
+msgstr ""
+
+#: ui/automatizacion/__init__.py:346
+msgid "Historial de runs"
+msgstr ""
+
+#: ui/automatizacion/__init__.py:357
+msgid "Limpiar Análisis"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:35
+msgid "Deteniendo..."
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:40
+msgid ""
+"Error: Primero verifique la 'Disponibilidad' para evitar bloqueos del "
+"sistema."
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:53
+msgid "Detener"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:78
+#, python-brace-format
+msgid "Tiempo estimado restante: {:02d}:{:02d}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:133
+#, python-brace-format
+msgid "Estabilizando temperatura... ({:.1f} °C)"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:172
+#, python-brace-format
+msgid "Error: {}..."
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:211
+msgid "Eficiencia"
+msgstr "Licença"
+
+#: ui/automatizacion/deteccion.py:211
+msgid "Latencia"
+msgstr "Licença"
+
+#: ui/automatizacion/deteccion.py:211
+msgid "Multitarea"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:212 ui/rendimiento.py:80
+#: ui/rendimiento.py:105
+msgid "Bajo Carga"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:212
+msgid "Compilación"
+msgstr "Fechar Aplicativo"
+
+#: ui/automatizacion/deteccion.py:212 ui/info_pruebas.py:80
+#: ui/rendimiento.py:78 ui/rendimiento.py:103
+msgid "Creación de Procesos"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/automatizacion/deteccion.py:220
+#, python-brace-format
+msgid "Analizando {}: {} ({}/6)..."
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:244
+#, python-brace-format
+msgid "Mejor Equilibrio: {}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:272 ui/automatizacion/pesos.py:154
+#: ui/rendimiento.py:277
+#, python-brace-format
+msgid "Mejor Planificador: {}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:273 ui/automatizacion/pesos.py:156
+#, python-brace-format
+msgid ""
+"'{}' ofrece la mejor propuesta integral con un {:.1f}% de eficacia de "
+"sistema."
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:316
+msgid "no es apto para pruebas desatendidas"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:387
+#, python-brace-format
+msgid "Restaurando el estado anterior: {}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:421
+#, python-brace-format
+msgid "Aplicado automáticamente: {}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:423
+msgid "No se pudo aplicar"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:424 ui/automatizacion/deteccion.py:427
+msgid "Error al aplicar"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:452
+#, python-brace-format
+msgid "Recomendado: {}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:453
+#, python-brace-format
+msgid "Detección finalizada: {}"
+msgstr ""
+
+#: ui/automatizacion/deteccion.py:456
+msgid "Análisis interrumpido por el usuario."
+msgstr ""
+
+#: ui/automatizacion/historial.py:46 ui/automatizacion/historial.py:221
+msgid "Sin historial"
+msgstr ""
+
+#: ui/automatizacion/historial.py:115
+#, python-brace-format
+msgid "Run #{} — {}"
+msgstr ""
+
+#: ui/automatizacion/historial.py:116
+#, python-brace-format
+msgid "Kernel {}"
+msgstr ""
+
+#: ui/automatizacion/historial.py:118
+#, python-brace-format
+msgid "  •  scxctl {}"
+msgstr ""
+
+#: ui/automatizacion/historial.py:159 ui/automatizacion/historial.py:237
+msgid "Este run no contiene datos válidos."
+msgstr ""
+
+#: ui/automatizacion/historial.py:205 ui/automatizacion/historial.py:279
+#, python-brace-format
+msgid "Cargado: {}"
+msgstr ""
+
+#: ui/automatizacion/historial.py:219
+#, python-brace-format
+msgid "Run {}/{} — {}"
+msgstr ""
+
+#: ui/automatizacion/pesos.py:126
+#, python-brace-format
+msgid "Potencia: {:.2f} | Respuesta: {:.2f} | Fluidez: {:.2f}"
+msgstr ""
+
+#: ui/automatizacion/pesos.py:260
+msgid "Si ajustas los pesos y nada cambia, no es el planificador... eres tú."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:261
+msgid ""
+"45/45/10 es como pedir pizza: todos dicen que quieren lo mismo, pero nadie "
+"está conforme."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:262
+msgid ""
+"Un planificador justo no existe. Solo hay planificadores menos injustos."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:263
+msgid ""
+"Si pones todo en 33%, obtienes... un planificador que no sabe qué priorizar."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:264
+msgid ""
+"La fluidez no es lo mismo que ir rápido. Es no quedarse sin gasolina a mitad "
+"de carrera."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:265
+msgid "Fun fact: Linus Torvalds no ajusta sliders. Usa un stick."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:266
+msgid "¿Más potencia? Tu Ryzen 7 ya está dando todo. Respira."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:267
+msgid ""
+"Los pesos son como las reglas de la primera noche... siempre hay un traitor."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:268
+msgid ""
+"Si el planificador te pregunta por qué lo torturas, dile que es para su bien."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:269
+msgid ""
+"Dato curioso: el 99% de los ajustes de pesos son placebo. Pero el 1% "
+"restante... también."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:270
+msgid ""
+"Ajustar pesos es como arreglar un auto en marcha. Divertido hasta que algo "
+"explota."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:271
+msgid "Si te gusta el botón, dale otra vez. No tengo vida."
+msgstr ""
+
+#: ui/automatizacion/pesos.py:272
+msgid "¿Otra vez? ¿Acaso esto es un benchmark de clicks?"
+msgstr ""
+
+#: ui/automatizacion/pesos.py:273
+#, python-brace-format
+msgid "Contador oficial: ya llevas {n} clics en una bombillita. Impresionante."
+msgstr ""
+
+#: ui/controles.py:33
+msgid "Estado Actual"
+msgstr ""
+
+#: ui/controles.py:34
+msgid "Planificador en Ejecución"
+msgstr ""
+
+#: ui/controles.py:39
+msgid "Configuración de SCX"
+msgstr ""
+
+#: ui/controles.py:40
+msgid "Seleccionar Planificador"
+msgstr ""
+
+#: ui/controles.py:49
+msgid "Seleccionar Modo"
+msgstr ""
+
+#: ui/controles.py:50
+msgid "Perfiles preconfigurados de scx_loader"
+msgstr ""
+
+#: ui/controles.py:58
+msgid "Información del Planificador"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/controles.py:76
+msgid "Abrir documentación »"
+msgstr ""
+
+#: ui/controles.py:92
+msgid ""
+"No hay información disponible para este planificador. Consultá la "
+"documentación oficial para más detalles."
+msgstr ""
+
+#: ui/controles.py:111
+msgid "Herramientas de Depuración"
+msgstr ""
+
+#: ui/controles.py:113
+msgid "Verificar Sistema"
+msgstr ""
+
+#: ui/controles.py:114
+msgid "Comprueba herramientas, comandos y dependencias"
+msgstr ""
+
+#: ui/controles.py:116
+msgid "Verificar"
+msgstr ""
+
+#: ui/controles.py:124
+msgid "Modo Simulación"
+msgstr ""
+
+#: ui/controles.py:124
+msgid "Prueba la UI sin hardware real ni scxctl"
+msgstr ""
+
+#: ui/controles.py:132
+msgid "ACTIVADO"
+msgstr ""
+
+#: ui/controles.py:135
+msgid "DESACTIVADO"
+msgstr ""
+
+#: ui/controles.py:143
+#, python-brace-format
+msgid "Modo Desarrollador: {}"
+msgstr ""
+
+#: ui/controles.py:157
+msgid "Iconos"
+msgstr ""
+
+#: ui/controles.py:158
+msgid "Usa iconos del kit de desarrollo de GNOME en lugar de los del sistema"
+msgstr ""
+
+#: ui/controles.py:158
+msgid "Usar iconos alternativos de GNOME"
+msgstr ""
+
+#: ui/controles.py:165
+msgid "Iconos alternativos: ACTIVADO"
+msgstr ""
+
+#: ui/controles.py:165
+msgid "Iconos del sistema: ACTIVADO"
+msgstr ""
+
+#: ui/controles.py:173
+msgid "Idioma"
+msgstr "Idioma"
+
+#: ui/controles.py:180
+msgid "Usar idioma del sistema"
+msgstr "Usar idioma do sistema"
+
+#: ui/controles.py:181
+msgid "Si está activo, se usa el idioma del sistema operativo"
+msgstr "Quando ativo, o idioma do sistema operacional é usado"
+
+#: ui/controles.py:186
+msgid "Idioma de la interfaz"
+msgstr "Idioma da interface"
+
+#: ui/controles.py:187
+msgid "Requiere reinicio"
+msgstr "Requer reinicialização"
+
+#: ui/controles.py:198
+msgid "Cambio de idioma"
+msgstr "Mudança de idioma"
+
+#: ui/controles.py:199
+msgid "Reiniciá la aplicación para que los cambios surtan efecto."
+msgstr "Reinicie o aplicativo para que as alterações tenham efeito."
+
+#: ui/controles.py:201
+msgid "OK"
+msgstr ""
+
+#: ui/controles.py:236
+msgid "Aplicar el planificador seleccionado"
+msgstr ""
+
+#: ui/controles.py:237
+#, fuzzy
+#| msgid "Gestión de planificadores SCX"
+msgid "Detener el planificador activo"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/controles.py:238
+#, fuzzy
+#| msgid "Gestión de planificadores SCX"
+msgid "Reiniciar el planificador activo"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/controles.py:253
+msgid "Actualizar Estado"
+msgstr ""
+
+#: ui/controles.py:270
+msgid "Elegí un planificador primero"
+msgstr ""
+
+#: ui/controles.py:271 ui/controles.py:323
+msgid "Aviso"
+msgstr ""
+
+#: ui/controles.py:283 ui/disponibilidad.py:37 ui/disponibilidad.py:38
+msgid "Error"
+msgstr ""
+
+#: ui/controles.py:311
+#, fuzzy
+#| msgid "Planificadores"
+msgid "Planificador aplicado"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/controles.py:312
+#, fuzzy
+#| msgid "Planificadores"
+msgid "Planificador detenido"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/controles.py:313
+#, fuzzy
+#| msgid "Planificadores"
+msgid "Planificador reiniciado"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/controles.py:315
+msgid "Listo"
+msgstr ""
+
+#: ui/controles.py:319
+msgid "La operación falló"
+msgstr ""
+
+#: ui/controles.py:355
+#, python-brace-format
+msgid "Aplicar {}"
+msgstr ""
+
+#: ui/controles.py:356
+msgid "Ya está aplicado"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:162
+msgid "N/D"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:198
+msgid " ctxt/s"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:238
+msgid "Ninguno"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:241
+msgid "Activo"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:242
+msgid "Cargando..."
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:243
+msgid "Descargando..."
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:244
+msgid "Inactivo"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:248
+msgid " (modo parcial)"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:335
+msgid "CPU"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:336
+msgid "RAM"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:337
+msgid "Temp"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:362
+msgid "Información y Diagnóstico de la CPU"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:371
+msgid "Monitoreo en Tiempo Real"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:372
+msgid "Estado, carga del sistema e integridad térmica."
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:375 ui/diagnostico/monitoreo.py:492
+msgid "Planificador Activo"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:401
+#, python-brace-format
+msgid "CPU {}"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:408
+msgid "0%"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:422
+msgid "Carga por Núcleo de Procesamiento"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:423
+msgid "Uso en tiempo real de cada CPU lógica"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:437
+msgid "Métricas de Planificación"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:438
+msgid "Agilidad y comportamiento de la cola de tareas del Kernel Linux."
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:441
+msgid "Carga Media (Load Average)"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:446
+msgid "Cambios de Contexto (Context Switches)"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:447
+msgid "Calculando..."
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:451
+msgid "Cambios de Contexto Totales (desde arranque)"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:456
+msgid "Tareas en Ejecución Activa"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:462
+msgid "Tareas Bloqueadas (Esperando I/O)"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:463
+msgid "Un valor elevado indica cuellos de botella en el disco o red"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:479
+msgid "Eventos de sched_ext"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:480
+msgid ""
+"Contadores del planificador BPF activo, leídos de /sys/kernel/sched_ext/"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:486
+msgid "Este kernel no tiene sched_ext"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:487
+msgid "El resto del diagnóstico funciona con normalidad."
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:493
+msgid "Estado"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:494
+msgid "Secuencia de Activación"
+msgstr ""
+
+#: ui/diagnostico/monitoreo.py:495
+msgid "Tareas Rechazadas"
+msgstr ""
+
+#: ui/diagnostico/pagina.py:25
+msgid "Monitor"
+msgstr ""
+
+#: ui/diagnostico/pagina.py:29
+msgid "scxtop"
+msgstr ""
+
+#: ui/diagnostico/pagina.py:31
+msgid "Entorno"
+msgstr ""
+
+#: ui/diagnostico/scxtop.py:38
+msgid ""
+"Vte no está instalado, así que no se puede empotrar la terminal. Instalá el "
+"paquete de introspección de Vte para GTK 4 (vte4 en Arch, gir1.2-vte-3.91 en "
+"Debian y Ubuntu)."
+msgstr ""
+
+#: ui/diagnostico/scxtop.py:46
+msgid ""
+"scxtop no está instalado. Viene con el paquete de planificadores de tu "
+"distribución (scx-scheds en Arch)."
+msgstr ""
+
+#: ui/disponibilidad.py:25 ui/disponibilidad.py:32
 msgid "Correcto"
 msgstr ""
 
-#: ui/disponibilidad.py:21 ui/disponibilidad.py:104 ui/disponibilidad.py:200
-#: ui/disponibilidad.py:233
+#: ui/disponibilidad.py:25 ui/disponibilidad.py:102 ui/disponibilidad.py:213
+#: ui/disponibilidad.py:246
 msgid "Sin verificar"
 msgstr ""
 
-#: ui/disponibilidad.py:24
+#: ui/disponibilidad.py:28
 msgid "Verificado"
 msgstr ""
 
-#: ui/disponibilidad.py:25
+#: ui/disponibilidad.py:29
 msgid "Residente"
 msgstr ""
 
-#: ui/disponibilidad.py:26
+#: ui/disponibilidad.py:30
 msgid "Apagado"
 msgstr ""
 
-#: ui/disponibilidad.py:27
+#: ui/disponibilidad.py:31
 msgid "Simulado"
 msgstr ""
 
-#: ui/disponibilidad.py:29
+#: ui/disponibilidad.py:33
 msgid "Error BPF"
 msgstr ""
 
-#: ui/disponibilidad.py:30
+#: ui/disponibilidad.py:34
 msgid "BPF faltante"
 msgstr ""
 
-#: ui/disponibilidad.py:33
+#: ui/disponibilidad.py:37
 #, python-brace-format
 msgid "Error {}"
 msgstr ""
 
-#: ui/disponibilidad.py:33 ui/disponibilidad.py:34
-msgid "Error"
-msgstr ""
-
-#: ui/disponibilidad.py:66
+#: ui/disponibilidad.py:63
 msgid "Compatibilidad de Planificadores"
 msgstr "Gerenciamento de planejadores SCX"
 
-#: ui/disponibilidad.py:67
+#: ui/disponibilidad.py:64
 msgid ""
-"Comprueba si el programa BPF de cada planificador puede cargarse en el "
-"kernel actual. La verificación requiere privilegios de administrador."
+"Comprueba que el binario de cada planificador pueda ejecutarse en este "
+"equipo. La comprobación básica no necesita privilegios y no altera el "
+"planificador activo."
 msgstr ""
 
-#: ui/disponibilidad.py:113
+#: ui/disponibilidad.py:111
 msgid "Registro de Verificación"
 msgstr ""
 
-#: ui/disponibilidad.py:114
+#: ui/disponibilidad.py:128
 msgid "Terminal de Diagnóstico"
 msgstr ""
 
-#: ui/disponibilidad.py:114
+#: ui/disponibilidad.py:129
 msgid "Salida técnica de los binarios BPF"
 msgstr ""
 
-#: ui/disponibilidad.py:132
+#: ui/disponibilidad.py:144
 msgid "Comprobar"
 msgstr ""
 
-#: ui/disponibilidad.py:141
+#: ui/disponibilidad.py:153
 msgid "Limpiar caché de compatibilidad"
 msgstr ""
 
-#: ui/disponibilidad.py:241
+#: ui/disponibilidad.py:254
 msgid "Caché de compatibilidad limpiada"
 msgstr ""
 
-#: ui/disponibilidad.py:252
+#: ui/disponibilidad.py:265
 msgid "Historial de Compatibilidad"
 msgstr ""
 
-#: ui/disponibilidad.py:276 ui/disponibilidad.py:280
+#: ui/disponibilidad.py:289 ui/disponibilidad.py:293
 #, python-brace-format
 msgid "{}/{} verificados"
 msgstr ""
 
-#: ui/disponibilidad.py:278
+#: ui/disponibilidad.py:291
 #, python-brace-format
 msgid "{}/{} fallidos"
 msgstr ""
 
-#: ui/disponibilidad.py:330
+#: ui/disponibilidad.py:343
 msgid "Esperando datos…"
 msgstr ""
 
-#: ui/disponibilidad.py:348
-msgid "INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF"
-msgstr ""
-
-#: ui/disponibilidad.py:359
+#: ui/disponibilidad.py:355
 msgid "Disponible (Simulado)"
 msgstr ""
 
-#: ui/disponibilidad.py:359
+#: ui/disponibilidad.py:355
 msgid "Error: Programa incompatible (Simulado)"
 msgstr ""
 
-#: ui/disponibilidad.py:371
+#: ui/disponibilidad.py:381
 msgid "Verificando..."
 msgstr ""
 
-#: ui/disponibilidad.py:378
+#: ui/disponibilidad.py:390
 msgid "Desconocido"
 msgstr ""
 
-#: ui/disponibilidad.py:384
+#: ui/disponibilidad.py:397
+msgid "No está instalado en este sistema"
+msgstr ""
+
+#: ui/disponibilidad.py:399
+msgid "El kernel no tiene sched_ext"
+msgstr ""
+
+#: ui/disponibilidad.py:401
 #, python-brace-format
-msgid "Probando scx_{}..."
+msgid "Probando {}..."
 msgstr ""
 
-#: ui/disponibilidad.py:391
+#: ui/disponibilidad.py:411
 #, python-brace-format
-msgid ""
-"Resumen de scx_{}:\n"
-"{}"
+msgid "Disponible — {}"
 msgstr ""
 
-#: ui/disponibilidad.py:400
-msgid "Programa BPF incompatible"
+#: ui/disponibilidad.py:413
+msgid "El binario no respondió"
 msgstr ""
 
-#: ui/disponibilidad.py:410
-msgid "Disponible (Verificado)"
+#: ui/disponibilidad.py:419
+msgid "Disponible, pero necesita configuración"
 msgstr ""
 
-#: ui/disponibilidad.py:412
-msgid "Disponible (Residente)"
+#: ui/disponibilidad.py:422
+msgid "Disponible (experimental)"
 msgstr ""
 
-#: ui/disponibilidad.py:414
-msgid "Disponible (Shutdown detectado)"
+#: ui/disponibilidad.py:428
+msgid "El binario no respondió a tiempo"
 msgstr ""
 
-#: ui/disponibilidad.py:420
+#: ui/disponibilidad.py:434
 #, python-brace-format
-msgid "Error de salida ({})"
+msgid "{}: {}"
 msgstr ""
 
-#: ui/disponibilidad.py:433
+#: ui/disponibilidad.py:454
+msgid "Sin verificar (se canceló la autorización)"
+msgstr ""
+
+#: ui/disponibilidad.py:455
+msgid "No se pudo cargar"
+msgstr ""
+
+#: ui/disponibilidad.py:467
+msgid "Verificado: se cargó en el kernel"
+msgstr ""
+
+#: ui/disponibilidad.py:468
+msgid "Se lanzó pero el kernel no lo activó"
+msgstr ""
+
+#: ui/disponibilidad.py:472
 msgid "VERIFICACIÓN FINALIZADA"
 msgstr ""
 
-#: ui/historial/tendencia.py:68
-msgid "Tendencia de Rendimiento"
+#: ui/disponibilidad.py:508
+msgid "INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF"
 msgstr ""
 
-#: ui/historial/tendencia.py:72 ui/historial/resultados.py:32
-msgid "Rango de Fechas"
-msgstr ""
-
-#: ui/historial/tendencia.py:82
-msgid "Tipo de Benchmark"
-msgstr ""
-
-#: ui/historial/tendencia.py:189 ui/historial/tendencia.py:282
-msgid "Promedio"
-msgstr ""
-
-#: ui/historial/tendencia.py:190 ui/historial/tendencia.py:282
-msgid "Mínimo"
-msgstr ""
-
-#: ui/historial/tendencia.py:191 ui/historial/tendencia.py:282
-msgid "Máximo"
-msgstr ""
-
-#: ui/historial/tendencia.py:192 ui/historial/tendencia.py:282
-msgid "Último"
-msgstr ""
-
-#: ui/historial/tendencia.py:193
-msgid "Tests"
-msgstr ""
-
-#: ui/historial/tendencia.py:264
-msgid "tests"
-msgstr ""
-
-#: ui/historial/tendencia.py:265
-msgid "planificadores"
-msgstr "Gerenciamento de planejadores SCX"
-
-#: ui/historial/tendencia.py:267
-msgid "Mejor"
-msgstr ""
-
-#: ui/historial/tendencia.py:268
-msgid "Peor"
-msgstr ""
-
-#: ui/historial/tendencia.py:344
-msgid "Planificador"
-msgstr ""
-
-#: ui/historial/tendencia.py:393
-msgid "Comparativa de Planificadores"
-msgstr "Gerenciamento de planejadores SCX"
-
-#: ui/historial/resultados.py:23
-msgid "Planificadores"
-msgstr "Gerenciamento de planejadores SCX"
-
-#: ui/historial/resultados.py:44 ui/historial/resultados.py:194
-msgid "Resultados Históricos"
-msgstr ""
-
-#: ui/historial/resultados.py:176
-msgid "Detección automática"
-msgstr ""
-
-#: ui/historial/resultados.py:176
-msgid "Benchmark manual"
-msgstr ""
-
-#: ui/historial/resultados.py:194
-msgid "encontrado(s)"
-msgstr ""
-
-#: ui/historial/entorno.py:47
-msgid "Sistema operativo"
-msgstr ""
-
-#: ui/historial/entorno.py:48
-msgid "Kernel"
+#: ui/disponibilidad.py:525
+#, python-brace-format
+msgid "Restaurando {}..."
 msgstr ""
 
 #: ui/historial/entorno.py:49
-msgid "Arquitectura"
+msgid "Sistema operativo"
 msgstr ""
 
 #: ui/historial/entorno.py:50
-msgid "Hostname"
+msgid "Kernel"
 msgstr ""
 
 #: ui/historial/entorno.py:51
+msgid "Arquitectura"
+msgstr ""
+
+#: ui/historial/entorno.py:52
+msgid "Hostname"
+msgstr ""
+
+#: ui/historial/entorno.py:53
 msgid "Actividad desde"
 msgstr ""
 
-#: ui/historial/entorno.py:73
+#: ui/historial/entorno.py:62
 msgid "Herramientas"
 msgstr ""
 
-#: ui/historial/entorno.py:114 ui/historial/entorno.py:165
+#: ui/historial/entorno.py:73
+msgid "No instalado"
+msgstr ""
+
+#: ui/historial/entorno.py:139 ui/historial/entorno.py:184
 msgid "Capacidades y Topología de Hardware"
 msgstr ""
 
-#: ui/historial/entorno.py:115 ui/historial/entorno.py:166
+#: ui/historial/entorno.py:140 ui/historial/entorno.py:185
 msgid "Visualización comparativa de las capacidades de la CPU."
 msgstr ""
 
-#: ui/historial/entorno.py:169
+#: ui/historial/entorno.py:188
 msgid "Cairo no disponible — instala python3-cairo"
 msgstr ""
 
-#: ui/historial/entorno.py:176
+#: ui/historial/entorno.py:195
 msgid "Especificaciones Avanzadas de CPU"
 msgstr ""
 
-#: ui/historial/entorno.py:177
+#: ui/historial/entorno.py:196
 msgid "Jerarquía técnica completa agrupada de lscpu."
 msgstr ""
-
-#: ui/historial/entorno.py:226
-msgid "Información del procesador"
-msgstr "Gerenciamento de planejadores SCX"
 
 #: ui/historial/pagina.py:24
 msgid "Resultados"
@@ -583,412 +1312,300 @@ msgstr ""
 msgid "Borrar"
 msgstr ""
 
-#: ui/automatizacion/__init__.py:55
-#, python-brace-format
-msgid "{}/{} seleccionados"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:96
-msgid "Detección Inteligente"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:96
-msgid "Escanear rendimiendo general de cada planificador y obtener el mejor."
-msgstr ""
-
-#: ui/automatizacion/__init__.py:106 ui/automatizacion/historial.py:183
-#: ui/automatizacion/historial.py:257 ui/automatizacion/deteccion.py:289
-msgid "Determinar"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:112
-msgid "Planificadores a analizar"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:118
-msgid "Marcar todos"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:119
-msgid "Desmarcar todos"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:123
-msgid "Seleccionar:"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:132
-msgid "Resultado del Diagnóstico"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:133 ui/automatizacion/deteccion.py:305
-#: ui/automatizacion/deteccion.py:315
-msgid "Motor en reposo"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:133 ui/automatizacion/deteccion.py:316
-msgid "Esperando al escaneo..."
-msgstr ""
-
-#: ui/automatizacion/__init__.py:139
-msgid "Registro de Optimización"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:140 ui/rendimiento.py:114
-msgid "Terminal de Análisis"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:140 ui/rendimiento.py:114
-msgid "Registro técnico detallado"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:150
-msgid "Análisis en Tiempo Real"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:167
-msgid "Ajustar Pesos"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:174
-msgid "Balanceado"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:175 ui/automatizacion/__init__.py:195
-msgid "Potencia"
-msgstr "Licença"
-
-#: ui/automatizacion/__init__.py:176 ui/automatizacion/__init__.py:196
-msgid "Respuesta"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:177 ui/automatizacion/__init__.py:197
-msgid "Fluidez"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:186
-msgid ""
-"Modifique la importancia de cada dimensión. Los resultados se recalculan al "
-"instante."
-msgstr ""
-
-#: ui/automatizacion/__init__.py:219
-msgid ""
-"Procure no tener nada abierto\n"
-"para no afectar el análisis."
-msgstr ""
-
-#: ui/automatizacion/__init__.py:225
-msgid "Historial de runs"
-msgstr ""
-
-#: ui/automatizacion/__init__.py:236
-msgid "Limpiar Análisis"
-msgstr ""
-
-#: ui/automatizacion/historial.py:44 ui/automatizacion/historial.py:214
-msgid "Sin historial"
-msgstr ""
-
-#: ui/automatizacion/historial.py:113
-#, python-brace-format
-msgid "Run #{} — {}"
-msgstr ""
-
-#: ui/automatizacion/historial.py:114
-#, python-brace-format
-msgid "Kernel {}"
-msgstr ""
-
-#: ui/automatizacion/historial.py:116
-#, python-brace-format
-msgid "  •  scxctl {}"
-msgstr ""
-
-#: ui/automatizacion/historial.py:151 ui/automatizacion/historial.py:228
-msgid "Este run no contiene datos válidos."
-msgstr ""
-
-#: ui/automatizacion/historial.py:198 ui/automatizacion/historial.py:271
-#, python-brace-format
-msgid "Cargado: {}"
-msgstr ""
-
-#: ui/automatizacion/historial.py:212
-#, python-brace-format
-msgid "Run {}/{} — {}"
-msgstr ""
-
-#: ui/automatizacion/pesos.py:137
-#, python-brace-format
-msgid "Potencia: {:.2f} | Respuesta: {:.2f} | Fluidez: {:.2f}"
-msgstr ""
-
-#: ui/automatizacion/pesos.py:165 ui/automatizacion/deteccion.py:236
-#: ui/rendimiento.py:288
-#, python-brace-format
-msgid "Mejor Planificador: {}"
-msgstr ""
-
-#: ui/automatizacion/pesos.py:167 ui/automatizacion/deteccion.py:237
-#, python-brace-format
-msgid ""
-"'{}' ofrece la mejor propuesta integral con un {:.1f}% de eficacia de "
-"sistema."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:271
-msgid "Si ajustas los pesos y nada cambia, no es el planificador... eres tú."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:272
-msgid ""
-"45/45/10 es como pedir pizza: todos dicen que quieren lo mismo, pero nadie "
-"está conforme."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:273
-msgid ""
-"Un planificador justo no existe. Solo hay planificadores menos injustos."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:274
-msgid ""
-"Si pones todo en 33%, obtienes... un planificador que no sabe qué priorizar."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:275
-msgid ""
-"La fluidez no es lo mismo que ir rápido. Es no quedarse sin gasolina a mitad "
-"de carrera."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:276
-msgid "Fun fact: Linus Torvalds no ajusta sliders. Usa un stick."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:277
-msgid "¿Más potencia? Tu Ryzen 7 ya está dando todo. Respira."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:278
-msgid ""
-"Los pesos son como las reglas de la primera noche... siempre hay un traitor."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:279
-msgid ""
-"Si el planificador te pregunta por qué lo torturas, dile que es para su bien."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:280
-msgid ""
-"Dato curioso: el 99% de los ajustes de pesos son placebo. Pero el 1% "
-"restante... también."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:281
-msgid ""
-"Ajustar pesos es como arreglar un auto en marcha. Divertido hasta que algo "
-"explota."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:282
-msgid "Si te gusta el botón, dale otra vez. No tengo vida."
-msgstr ""
-
-#: ui/automatizacion/pesos.py:283
-msgid "¿Otra vez? ¿Acaso esto es un benchmark de clicks?"
-msgstr ""
-
-#: ui/automatizacion/pesos.py:284
-#, python-brace-format
-msgid "Contador oficial: ya llevas {n} clics en una bombillita. Impresionante."
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:31
-msgid "Deteniendo..."
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:36
-msgid ""
-"Error: Primero verifique la 'Disponibilidad' para evitar bloqueos del "
-"sistema."
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:49 ui/controles.py:214
-msgid "Detener"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:74
-#, python-brace-format
-msgid "Tiempo estimado restante: {:02d}:{:02d}"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:85 ui/grafico.py:32
-msgid "C.Contexto"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:85 ui/grafico.py:32
-msgid ""
-"Carga\n"
-"Mixta"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:85 ui/grafico.py:32
-msgid "Mutex"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:86 ui/grafico.py:33
-msgid "Bifurcación"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:86 ui/grafico.py:33
-msgid "Compilar"
-msgstr "Fechar Aplicativo"
-
-#: ui/automatizacion/deteccion.py:86 ui/grafico.py:33
-msgid ""
-"Bajo\n"
-"Carga"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:123
-#, python-brace-format
-msgid "Estabilizando térmica... ({:.1f}°C)"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:132
-#, python-brace-format
-msgid "Enfriando... {:.1f}°C (Límite: {:.1f}°C)"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:152
-msgid "El planificador no respondió a la señal de inicio."
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:155
-#, python-brace-format
-msgid "Error: {}..."
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:165
-msgid "Latencia"
-msgstr "Licença"
-
-#: ui/automatizacion/deteccion.py:165
-msgid "Multitarea"
-msgstr ""
-
-#: ui/automatizacion/deteccion.py:165
-msgid "Eficiencia"
-msgstr "Licença"
-
-#: ui/automatizacion/deteccion.py:166 ui/rendimiento.py:83
-#: ui/rendimiento.py:103 ui/rendimiento.py:158
-msgid "Creación de Procesos"
+#: ui/historial/resultados.py:24
+msgid "Planificadores"
 msgstr "Gerenciamento de planejadores SCX"
 
-#: ui/automatizacion/deteccion.py:166
-msgid "Compilación"
-msgstr "Fechar Aplicativo"
-
-#: ui/automatizacion/deteccion.py:166 ui/rendimiento.py:85
-#: ui/rendimiento.py:105
-msgid "Bajo Carga"
+#: ui/historial/resultados.py:33 ui/historial/tendencia.py:58
+msgid "Rango de Fechas"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:180
-#, python-brace-format
-msgid "Analizando {}: {} ({}/6)..."
+#: ui/historial/resultados.py:45 ui/historial/resultados.py:156
+msgid "Resultados Históricos"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:208
-#, python-brace-format
-msgid "Mejor Equilibrio: {}"
+#: ui/historial/resultados.py:138
+msgid "Benchmark manual"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:274
-#, python-brace-format
-msgid "Aplicado automáticamente: {}"
+#: ui/historial/resultados.py:138
+msgid "Detección automática"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:279
-#, python-brace-format
-msgid "Error al aplicar: {}"
+#: ui/historial/resultados.py:156
+msgid "encontrado(s)"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:302
-#, python-brace-format
-msgid "Recomendado: {}"
+#: ui/historial/tendencia.py:54
+msgid "Tendencia de Rendimiento"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:303
-#, python-brace-format
-msgid "Detección finalizada: {}"
+#: ui/historial/tendencia.py:68
+msgid "Tipo de Benchmark"
 msgstr ""
 
-#: ui/automatizacion/deteccion.py:306
-msgid "Análisis interrumpido por el usuario."
+#: ui/historial/tendencia.py:170 ui/historial/tendencia.py:230
+msgid "Promedio"
 msgstr ""
 
-#: ui/rendimiento.py:56
-msgid "Resultados de Ranking"
+#: ui/historial/tendencia.py:171 ui/historial/tendencia.py:230
+msgid "Mínimo"
 msgstr ""
 
-#: ui/rendimiento.py:57 ui/rendimiento.py:250
-msgid "Esperando datos..."
+#: ui/historial/tendencia.py:172 ui/historial/tendencia.py:230
+msgid "Máximo"
 msgstr ""
 
-#: ui/rendimiento.py:57
-msgid "Determina el mejor basado en las pruebas manuales."
+#: ui/historial/tendencia.py:173 ui/historial/tendencia.py:230
+msgid "Último"
 msgstr ""
 
-#: ui/rendimiento.py:65
-msgid "Estrés (stress-ng)"
+#: ui/historial/tendencia.py:174
+msgid "Tests"
 msgstr ""
 
-#: ui/rendimiento.py:67 ui/rendimiento.py:100 ui/rendimiento.py:146
+#: ui/historial/tendencia.py:210
+msgid "tests"
+msgstr ""
+
+#: ui/historial/tendencia.py:211
+msgid "planificadores"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/historial/tendencia.py:213
+msgid "Mejor"
+msgstr ""
+
+#: ui/historial/tendencia.py:214
+msgid "Peor"
+msgstr ""
+
+#: ui/historial/tendencia.py:288
+msgid "Planificador"
+msgstr ""
+
+#: ui/historial/tendencia.py:332
+msgid "Comparativa de Planificadores"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/info_pruebas.py:15 ui/rendimiento.py:54 ui/rendimiento.py:100
 msgid "Cambio de Contexto"
 msgstr "Mudança de idioma"
 
-#: ui/rendimiento.py:67
-msgid "Respuesta a nuevas tareas"
+#: ui/info_pruebas.py:17
+msgid ""
+"Mide la capacidad del scheduler para cambiar entre tareas que compiten por "
+"la CPU. stress-ng ejecuta múltiples hilos que alternan entre cálculos "
+"intensivos, forzando al kernel a conmutar contexto constantemente."
 msgstr ""
 
-#: ui/rendimiento.py:68 ui/rendimiento.py:101 ui/rendimiento.py:147
+#: ui/info_pruebas.py:23
+msgid ""
+"Un valor bajo (pts) indica mejor rendimiento: el scheduler completa más "
+"cambios de contexto por segundo. Compará planificadores ejecutando esta "
+"prueba con distintos schedulers activos."
+msgstr ""
+
+#: ui/info_pruebas.py:28
+msgid ""
+"El stressor 'cpu' de stress-ng ejecuta operaciones aritméticas en hilos "
+"concurrentes. La métrica principal es la tasa de context switches reales del "
+"kernel, no operaciones de usuario. Relevante para cargas de trabajo con "
+"muchos procesos breves (compilación, servidores web, scripting)."
+msgstr ""
+
+#: ui/info_pruebas.py:36 ui/rendimiento.py:55 ui/rendimiento.py:101
 msgid "Carga Mixta"
 msgstr ""
 
-#: ui/rendimiento.py:68
-msgid "Uso real de escritorio"
+#: ui/info_pruebas.py:38
+msgid ""
+"Simula un escritorio real con múltiples aplicaciones activas: hilos en "
+"segundo plano, operaciones de E/S simuladas y cambios entre tareas de "
+"diferente prioridad. stress-ng combina stressors de thread, io-uring y sleep."
 msgstr ""
 
-#: ui/rendimiento.py:69 ui/rendimiento.py:102 ui/rendimiento.py:148
+#: ui/info_pruebas.py:44
+msgid ""
+"Un valor alto (ops/s) es mejor. Indica que el scheduler mantiene la fluidez "
+"del sistema aunque haya múltiples procesos de distinta naturaleza "
+"compitiendo por recursos."
+msgstr ""
+
+#: ui/info_pruebas.py:49
+msgid ""
+"Esta prueba combina varios stressors de stress-ng para emular la "
+"heterogeneidad de un escritorio real: hilos bloqueantes, cómputo en "
+"foreground y ráfagas de E/S. Un buen scheduler aquí se traduce en un sistema "
+"que no se siente lento bajo carga mixta."
+msgstr ""
+
+#: ui/info_pruebas.py:57 ui/rendimiento.py:56 ui/rendimiento.py:102
 msgid "Sincronización"
 msgstr ""
 
-#: ui/rendimiento.py:69
-msgid "Gestión de bloqueos Mutex"
-msgstr "Gerenciamento de planejadores SCX"
-
-#: ui/rendimiento.py:81
-msgid "Latencia (hyperfine)"
+#: ui/info_pruebas.py:59
+msgid ""
+"Evalúa la eficiencia del scheduler en operaciones de sincronización entre "
+"hilos. stress-ng dispara múltiples hilos que compiten por cerrojos mutex, "
+"midiendo el tiempo de adquisición y liberación."
 msgstr ""
 
-#: ui/rendimiento.py:83
-msgid "Creación de procesos"
+#: ui/info_pruebas.py:65
+msgid ""
+"Un valor bajo (µs) es mejor. Menor latencia en mutex implica que el "
+"scheduler despierta y duerme hilos de forma eficiente, reduciendo contención."
 msgstr ""
 
-#: ui/rendimiento.py:84 ui/rendimiento.py:104 ui/rendimiento.py:159
+#: ui/info_pruebas.py:70
+msgid ""
+"La métrica 'nanosecs-per-mutex' se obtiene del stressor --mutex de stress-"
+"ng. Cientos de hilos compiten por un conjunto limitado de mutex, forzando al "
+"scheduler a decidir qué hilo ejecutar y cuál bloquear. Un scheduler con "
+"buena sincronización reduce el sobrecoste de contención, mejorando el "
+"rendimiento en bases de datos, servidores y aplicaciones concurrentes."
+msgstr ""
+
+#: ui/info_pruebas.py:82
+msgid ""
+"Mide la latencia de crear y ejecutar un proceso hijo (fork+exec). hyperfine "
+"ejecuta un comando corto repetidas veces y calcula el tiempo medio, "
+"percentiles y desviación."
+msgstr ""
+
+#: ui/info_pruebas.py:87
+msgid ""
+"Un valor bajo (µs) es mejor. Menor latencia en fork+exec indica que el "
+"scheduler maneja eficientemente la creación de nuevos procesos, crucial para "
+"shells, scripts y servidores que lanzan procesos frecuentemente."
+msgstr ""
+
+#: ui/info_pruebas.py:93
+msgid ""
+"hyperfine ejecuta 'sh -c \"true\"' para medir el tiempo de fork+exec en "
+"vacío, y 'sh -c \"exit\"' para medir solo el exec. La diferencia entre ambas "
+"da el costo neto del fork. Se realizan múltiples iteraciones con warmup para "
+"estabilizar la medición."
+msgstr ""
+
+#: ui/info_pruebas.py:101 ui/rendimiento.py:79 ui/rendimiento.py:104
 msgid "Compilación Paralela"
 msgstr ""
 
-#: ui/rendimiento.py:84
-msgid "Rendimiento real make -j"
+#: ui/info_pruebas.py:103
+msgid ""
+"Mide el rendimiento de compilación paralela usando make -j. hyperfine "
+"cronometra una compilación real con todos los núcleos disponibles, evaluando "
+"qué tan bien el scheduler distribuye y balancea hilos CPU-intensivos."
 msgstr ""
 
-#: ui/rendimiento.py:85
+#: ui/info_pruebas.py:109
+msgid ""
+"Un valor bajo (µs) es mejor. Menor tiempo de compilación implica que el "
+"scheduler reparte eficazmente la carga entre núcleos sin dejar CPUs ociosas "
+"ni generar contención excesiva."
+msgstr ""
+
+#: ui/info_pruebas.py:115
+msgid ""
+"Se compila un pequeño programa C con make -j$(nproc). La compilación "
+"paralela es un caso de uso clásico de throughput: muchos procesos CPU-bound "
+"de corta duración. Un scheduler con buen balanceo reparte los procesos entre "
+"todos los núcleos disponibles, minimizando el tiempo total. Esta prueba "
+"ayudó a identificar el planificador óptimo durante el desarrollo de "
+"R.E.A.C.T.O.R."
+msgstr ""
+
+#: ui/info_pruebas.py:125
+msgid "Latencia Bajo Carga"
+msgstr ""
+
+#: ui/info_pruebas.py:127
+msgid ""
+"Mide la latencia de respuesta del sistema mientras está sometido a una carga "
+"CPU intensiva en segundo plano. hyperfine ejecuta un comando rápido mientras "
+"stress-ng satura la CPU, evaluando si el scheduler protege las tareas "
+"interactivas."
+msgstr ""
+
+#: ui/info_pruebas.py:134
+msgid ""
+"Un valor bajo (µs) es mejor. La diferencia entre esta medición y la de "
+"'Creación de Procesos' (sin carga) revela cuánto impacta la carga de fondo "
+"en la latencia de nuevas tareas. Idealmente debería ser mínima."
+msgstr ""
+
+#: ui/info_pruebas.py:140
+msgid ""
+"Mientras stress-ng ejecuta hilos CPU-bound en todos los núcleos, hyperfine "
+"mide la latencia de fork+exec. Un scheduler con buena aislamiento de carga "
+"prioriza las tareas interactivas sobre las de fondo, manteniendo la "
+"capacidad de respuesta del sistema incluso cuando la CPU está al 100%. Es la "
+"prueba más representativa de la experiencia de usuario real en un sistema "
+"ocupado."
+msgstr ""
+
+#: ui/info_pruebas.py:171
+msgid "Qué mide"
+msgstr ""
+
+#: ui/info_pruebas.py:172
+msgid "Cómo interpretarlo"
+msgstr ""
+
+#: ui/info_pruebas.py:173
+msgid "Detalle técnico"
+msgstr ""
+
+#: ui/rendimiento.py:39
+msgid "Resultados de Ranking"
+msgstr ""
+
+#: ui/rendimiento.py:40
+msgid "Determina el mejor basado en las pruebas manuales."
+msgstr ""
+
+#: ui/rendimiento.py:40 ui/rendimiento.py:239
+msgid "Esperando datos..."
+msgstr ""
+
+#: ui/rendimiento.py:48 ui/rendimiento.py:50
+msgid "Estrés (stress-ng)"
+msgstr ""
+
+#: ui/rendimiento.py:49 ui/rendimiento.py:74
+msgid "Info sobre estas pruebas"
+msgstr ""
+
+#: ui/rendimiento.py:54
+msgid "Respuesta a nuevas tareas"
+msgstr ""
+
+#: ui/rendimiento.py:55
+msgid "Uso real de escritorio"
+msgstr ""
+
+#: ui/rendimiento.py:56
+msgid "Gestión de bloqueos Mutex"
+msgstr "Gerenciamento de planejadores SCX"
+
+#: ui/rendimiento.py:62 ui/rendimiento.py:86
+msgid "Ejecutar prueba"
+msgstr ""
+
+#: ui/rendimiento.py:73 ui/rendimiento.py:75
+msgid "Latencia (hyperfine)"
+msgstr ""
+
+#: ui/rendimiento.py:78
+msgid "Creación de procesos"
+msgstr ""
+
+#: ui/rendimiento.py:79
+msgid "hyperfine + rt-tests"
+msgstr ""
+
+#: ui/rendimiento.py:80
 msgid "Primer plano saturado"
 msgstr ""
 
@@ -1004,329 +1621,137 @@ msgstr ""
 msgid "Diagnóstico de Rendimiento"
 msgstr ""
 
-#: ui/rendimiento.py:136
+#: ui/rendimiento.py:147
 msgid "Limpiar Rankings"
 msgstr ""
 
-#: ui/rendimiento.py:160
-msgid "Latencia Bajo Carga"
-msgstr ""
-
-#: ui/rendimiento.py:238
+#: ui/rendimiento.py:227
 #, python-brace-format
 msgid "#1 {}"
 msgstr ""
 
-#: ui/rendimiento.py:240
+#: ui/rendimiento.py:229
 #, python-brace-format
 msgid " • {} tests"
 msgstr ""
 
-#: ui/rendimiento.py:246
+#: ui/rendimiento.py:235
 #, python-brace-format
 msgid "{} • {} prueba(s)"
 msgstr ""
 
-#: ui/rendimiento.py:264
+#: ui/rendimiento.py:253
 msgid "Actual"
 msgstr ""
 
-#: ui/rendimiento.py:270
+#: ui/rendimiento.py:259
 #, python-brace-format
 msgid "{} resultado(s) disponible(s)"
 msgstr ""
 
-#: ui/rendimiento.py:272
+#: ui/rendimiento.py:261
 msgid "Sin datos"
 msgstr ""
 
-#: ui/rendimiento.py:289
+#: ui/rendimiento.py:278
 #, python-brace-format
 msgid "Puntuación: {:.1f}% (Equilibrio 45/45/10 | Potencia/Respuesta/Fluidez)"
 msgstr ""
 
-#: ui/controles.py:28
-msgid "Estado Actual"
-msgstr ""
-
-#: ui/controles.py:29
-msgid "Planificador en Ejecución"
-msgstr ""
-
-#: ui/controles.py:30 ui/diagnostico/monitoreo.py:308
-#: ui/diagnostico/monitoreo.py:374 ui/diagnostico/monitoreo.py:384
-#: ui/diagnostico/monitoreo.py:389 ui/diagnostico/monitoreo.py:397
-msgid "Cargando..."
-msgstr ""
-
-#: ui/controles.py:34
-msgid "Configuración de SCX"
-msgstr ""
-
-#: ui/controles.py:35
-msgid "Seleccionar Planificador"
-msgstr ""
-
-#: ui/controles.py:38
-msgid "Seleccionar Modo"
-msgstr ""
-
-#: ui/controles.py:47
-msgid "Información del Planificador"
-msgstr "Gerenciamento de planejadores SCX"
-
-#: ui/controles.py:65
-msgid "Abrir documentación »"
-msgstr ""
-
-#: ui/controles.py:81
-msgid ""
-"No hay información disponible para este planificador. Consultá la "
-"documentación oficial para más detalles."
-msgstr ""
-
-#: ui/controles.py:103
-msgid "Herramientas de Depuración"
-msgstr ""
-
-#: ui/controles.py:104
-msgid "Modo Simulación"
-msgstr ""
-
-#: ui/controles.py:104
-msgid "Prueba la UI sin hardware real ni scxctl"
-msgstr ""
-
-#: ui/controles.py:112
-msgid "ACTIVADO"
-msgstr ""
-
-#: ui/controles.py:115
-msgid "DESACTIVADO"
-msgstr ""
-
-#: ui/controles.py:123
-#, python-brace-format
-msgid "Modo Desarrollador: {}"
-msgstr ""
-
-#: ui/controles.py:135
-msgid "Iconos"
-msgstr ""
-
-#: ui/controles.py:136
-msgid "Usar iconos alternativos de GNOME"
-msgstr ""
-
-#: ui/controles.py:136
-msgid "Usa iconos del kit de desarrollo de GNOME en lugar de los del sistema"
-msgstr ""
-
-#: ui/controles.py:143
-msgid "Iconos alternativos: ACTIVADO"
-msgstr ""
-
-#: ui/controles.py:143
-msgid "Iconos del sistema: ACTIVADO"
-msgstr ""
-
-#: ui/controles.py:151
-msgid "Idioma"
-msgstr "Idioma"
-
-#: ui/controles.py:158
-msgid "Usar idioma del sistema"
+#: ui/verificacion.py:23 ui/verificacion.py:33
+#, fuzzy
+#| msgid "Usar idioma del sistema"
+msgid "Verificación del Sistema"
 msgstr "Usar idioma do sistema"
 
-#: ui/controles.py:159
-msgid "Si está activo, se usa el idioma del sistema operativo"
-msgstr "Quando ativo, o idioma do sistema operacional é usado"
-
-#: ui/controles.py:164
-msgid "Idioma de la interfaz"
-msgstr "Idioma da interface"
-
-#: ui/controles.py:165
-msgid "Requiere reinicio"
-msgstr "Requer reinicialização"
-
-#: ui/controles.py:176
-msgid "Cambio de idioma"
-msgstr "Mudança de idioma"
-
-#: ui/controles.py:177
-msgid "Reiniciá la aplicación para que los cambios surtan efecto."
-msgstr "Reinicie o aplicativo para que as alterações tenham efeito."
-
-#: ui/controles.py:179
-msgid "OK"
+#: ui/verificacion.py:36 ui/verificacion.py:167
+msgid "Comprobando herramientas, comandos y dependencias…"
 msgstr ""
 
-#: ui/controles.py:213
-msgid "Iniciar"
+#: ui/verificacion.py:85
+msgid "Reintentar"
 msgstr ""
 
-#: ui/controles.py:222
-msgid "Actualizar Estado"
+#: ui/verificacion.py:86
+msgid "Continuar"
 msgstr ""
 
-#: ui/controles.py:250
-msgid "Ya se está ejecutando"
+#: ui/verificacion.py:117
+msgid "Sin información adicional disponible."
 msgstr ""
 
-#: ui/controles.py:252
-msgid "No hay ningún planificador activo"
+#: ui/verificacion.py:135
+msgid "Todos los chequeos críticos pasaron. Podés usar R.E.A.C.T.O.R."
 msgstr ""
 
-#: ui/controles.py:254
-msgid "Comando fallido"
+#: ui/verificacion.py:137
+msgid "Hay fallos críticos. Revisá los detalles y reinstalá lo necesario."
 msgstr ""
 
-#: ui/controles.py:257
-#, python-brace-format
-msgid "Aviso: {}"
-msgstr ""
+#~ msgid "Equipo de Desarrollo R.E.A.C.T.O.R"
+#~ msgstr "Equipe de Desenvolvimento R.E.A.C.T.O.R"
 
-#: ui/controles.py:294
-msgid "Cambio fallido"
-msgstr ""
+#~ msgid "DinimixisDEMZ (Lead Developer/Lead Designer)"
+#~ msgstr "DinimixisDEMZ (Lead Developer/Lead Designer)"
 
-#: ui/controles.py:295 ui/controles.py:300
-#, python-brace-format
-msgid "Error: {}"
-msgstr ""
+#~ msgid ""
+#~ "Dark Anubis (IT Technical Specialist, System Administrator, DevOps & "
+#~ "Network Tech.)"
+#~ msgstr ""
+#~ "Dark Anubis (IT Technical Specialist, System Administrator, DevOps & "
+#~ "Network Tech.)"
 
-#: ui/controles.py:297
-#, python-brace-format
-msgid "Aplicado: {} [{}]"
-msgstr ""
+#~ msgid "MD1000[Emedé] (Beta Tester/Designer)"
+#~ msgstr "MD1000[Emedé] (Beta Tester/Designer)"
 
-#: ui/diagnostico/scxtop.py:29
-msgid "Vte no instalado — instale gir1.2-vte-3.91 para scxtop"
-msgstr ""
+#~ msgid "SunnyDeus (Beta Tester)"
+#~ msgstr "SunnyDeus (Beta Tester)"
 
-#: ui/diagnostico/scxtop.py:53
-msgid "scxtop no instalado"
-msgstr ""
+#~ msgid "JMX369 (Beta Tester)"
+#~ msgstr "JMX369 (Beta Tester)"
 
-#: ui/diagnostico/monitoreo.py:153
-msgid "N/D"
-msgstr ""
+#~ msgid "Gekko (Designer)"
+#~ msgstr "Gekko (Designer)"
 
-#: ui/diagnostico/monitoreo.py:189
-msgid " ctxt/s"
-msgstr ""
+#~ msgid ""
+#~ "<p>R.E.A.C.T.O.R 1.0 — Primera versión estable.</p>\n"
+#~ "<ul>\n"
+#~ "  <li>Tests automatizados (49 tests cubriendo scoring, benchmark, "
+#~ "database y thermal).</li>\n"
+#~ "  <li>Split del módulo automatización en 4 submódulos.</li>\n"
+#~ "  <li>Refactorización del god-object VentanaSimple con dataclasses de "
+#~ "estado.</li>\n"
+#~ "  <li>pyproject.toml con configuración estándar de Python.</li>\n"
+#~ "  <li>Constantes compartidas centralizadas en core/constantes.py.</li>\n"
+#~ "  <li>35 excepciones genéricas reemplazadas por tipos específicos.</li>\n"
+#~ "  <li>Scoring renombrado: fairness → waste para mayor claridad.</li>\n"
+#~ "</ul>"
+#~ msgstr ""
+#~ "<p>R.E.A.C.T.O.R 1.0 — Primeira versão estável.</p>\n"
+#~ "<ul>\n"
+#~ "  <li>Testes automatizados (49 testes cobrindo scoring, benchmark, "
+#~ "database e thermal).</li>\n"
+#~ "  <li>Divisão do módulo de automação em 4 submódulos.</li>\n"
+#~ "  <li>Refatoração do god-object VentanaSimple com dataclasses de estado.</"
+#~ "li>\n"
+#~ "  <li>pyproject.toml com configuração padrão do Python.</li>\n"
+#~ "  <li>Constantes compartilhadas centralizadas em core/constantes.py.</"
+#~ "li>\n"
+#~ "  <li>35 exceções genéricas substituídas por tipos específicos.</li>\n"
+#~ "  <li>Scoring renomeado: fairness → waste para maior clareza.</li>\n"
+#~ "</ul>"
 
-#: ui/diagnostico/monitoreo.py:267
-msgid "CPU"
-msgstr ""
+#~ msgid "opencode (AI Software Engineer - big-pickle)"
+#~ msgstr "opencode (AI Software Engineer - big-pickle)"
 
-#: ui/diagnostico/monitoreo.py:268
-msgid "RAM"
-msgstr ""
+#~ msgid "Antigravity (AI Assistant)"
+#~ msgstr "Antigravity (AI Assistant)"
 
-#: ui/diagnostico/monitoreo.py:269
-msgid "Temp"
-msgstr ""
+#~ msgid "DeepSeek V4 Flash (AI Software Engineer)"
+#~ msgstr "DeepSeek V4 Flash (AI Software Engineer)"
 
-#: ui/diagnostico/monitoreo.py:294
-msgid "Información y Diagnóstico de la CPU"
-msgstr ""
+#~ msgid "Información del procesador"
+#~ msgstr "Gerenciamento de planejadores SCX"
 
-#: ui/diagnostico/monitoreo.py:303
-msgid "Monitoreo en Tiempo Real"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:304
-msgid "Estado, carga del sistema e integridad térmica."
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:307 ui/diagnostico/monitoreo.py:412
-msgid "Planificador Activo"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:333
-#, python-brace-format
-msgid "CPU {}"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:340
-msgid "0%"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:354
-msgid "Carga por Núcleo de Procesamiento"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:355
-msgid "Uso en tiempo real de cada CPU lógica"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:369
-msgid "Métricas de Planificación"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:370
-msgid "Agilidad y comportamiento de la cola de tareas del Kernel Linux."
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:373
-msgid "Carga Media (Load Average)"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:378
-msgid "Cambios de Contexto (Context Switches)"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:379
-msgid "Calculando..."
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:383
-msgid "Cambios de Contexto Totales (desde arranque)"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:388
-msgid "Tareas en Ejecución Activa"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:394
-msgid "Tareas Bloqueadas (Esperando I/O)"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:395
-msgid "Un valor elevado indica cuellos de botella en el disco o red"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:405
-msgid "Eventos de sched_ext"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:406
-msgid ""
-"Contadores del planificador BPF activo — lecturas de /sys/kernel/sched_ext/"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:421
-msgid "Estado"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:430
-msgid "Secuencia de Activación"
-msgstr ""
-
-#: ui/diagnostico/monitoreo.py:439
-msgid "Tareas Rechazadas"
-msgstr ""
-
-#: ui/diagnostico/pagina.py:25
-msgid "Monitor"
-msgstr ""
-
-#: ui/diagnostico/pagina.py:29
-msgid "scxtop"
-msgstr ""
-
-#: ui/diagnostico/pagina.py:31
-msgid "Entorno"
-msgstr ""
+#~ msgid "Compilar"
+#~ msgstr "Fechar Aplicativo"

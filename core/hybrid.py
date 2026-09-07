@@ -19,6 +19,7 @@ import json
 
 from utils.logging import log as _log, log_subprocess_output, log_error_benchmark
 from utils.helpers import limpiar_texto as _limpiar_texto, resultado_base
+from core.dimensionado import obtener_dimensionado
 
 
 def _a_microsegundos(valor, unidad):
@@ -69,7 +70,7 @@ def _ejecutar_hybrid_cmd(cmd, tv_log=None, logs=True, timeout=60):
     return metricas, elapsed
 
 
-def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=False):
+def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=None, logs=True, modo_dev=False):
     """Ejecuta una prueba de latencia con hyperfine.
     
     Args:
@@ -106,7 +107,8 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             res = resultado_base(scx_manager, f"latencia_{tipo}",
                 base["val"] * factor, base["std"] * factor,
                 0.05 + (seed % 10) / 1000.0, sc_act, modo_act)
-            res.update({"mean_us": base["val"] * factor, "std_us": base["std"] * factor, "runs": 100})
+            res.update({"mean_us": base["val"] * factor, "std_us": base["std"] * factor,
+                        "p95_valido": True, "runs": 100})
             return res
         
         # ── Construir Comando hyperfine ──
@@ -147,7 +149,9 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                     _log(tv_log, "rt-tests source no encontrado. Compilación paralela omitida.", nivel="warning")
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 return None
-            cpus = os.cpu_count() or 4
+            # Paralelismo real de compilación: respeta afinidad y cuota, que
+            # `os.cpu_count()` ignora.
+            cpus = obtener_dimensionado().trabajadores
             cmd = [
                 "hyperfine",
                 "--warmup", "2",
@@ -158,7 +162,10 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 f"make -C {rt_dir} cyclictest -j{cpus} >/dev/null 2>&1"
             ]
             nombre_test = "compilación paralela"
-            timeout = 120
+            # El tiempo límite se escala al equipo: 120 s fijos bastaban en un
+            # portátil moderno, pero en una máquina lenta la prueba se abortaba
+            # siempre y "compilación" quedaba permanentemente sin datos.
+            timeout = max(120, 240 // max(1, cpus // 4))
         
         elif tipo == "loaded":
             # Interactividad bajo carga: asegura que stress-ng esté saturando
@@ -169,8 +176,15 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
                 "-n", "foreground-under-load",
                 "-r", "15",
                 "--export-json", json_path,
-                "-p", "pkill -9 stress-ng 2>/dev/null || true; stress-ng --cpu $(nproc) --temp-path /tmp --quiet 2>/dev/null & sleep 0.2",
-                "--cleanup", "pkill -9 stress-ng 2>/dev/null || true",
+                # `pkill` se acota al usuario actual y a una coincidencia
+                # exacta del nombre: sin `-u` y sin `-x` mataba también la
+                # ejecución de stress-ng de cualquier otra persona en el equipo.
+                # Y la carga usa los trabajadores dimensionados, no `nproc`,
+                # que vuelve a ignorar la afinidad del proceso.
+                "-p", (f"pkill -9 -u $(id -u) -x stress-ng 2>/dev/null || true; "
+                       f"stress-ng --cpu {obtener_dimensionado().trabajadores} "
+                       f"--temp-path /tmp --quiet 2>/dev/null & sleep 0.2"),
+                "--cleanup", "pkill -9 -u $(id -u) -x stress-ng 2>/dev/null || true",
                 "python3 -c \"import hashlib;[hashlib.sha256(str(i).encode()).hexdigest() for i in range(5000)]\""
             ]
             nombre_test = "interactividad bajo carga"
@@ -213,7 +227,8 @@ def correr_hybrid(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=
             _log(tv_log, "-" * 50)
         
         res = resultado_base(scx_manager, f"latencia_{tipo}", mean_us, std_us, waste, sc_act, modo_act)
-        res.update({"mean_us": mean_us, "std_us": std_us,
+        res.update({"mean_us": mean_us, "std_us": std_us, "p95_valido": std_us > 0,
+                     "dimensionado": obtener_dimensionado().como_diccionario(),
                      "min_us": metricas.get('min_us', 0),
                      "max_us": metricas.get('max_us', 0), "runs": runs})
         return res

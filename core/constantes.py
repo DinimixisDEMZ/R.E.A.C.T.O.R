@@ -2,11 +2,16 @@
 Constantes compartidas del proyecto R.E.A.C.T.O.R.
 """
 
-VERSION = "1.0"
+# Fuente única de la versión. El script de empaquetado la sobrescribe desde el
+# tag de git al construir, así que aquí vive el número de la versión EN CURSO,
+# no el de la última publicada (v1.0.5).
+VERSION = "1.1.0.dev0"
 
-# Temperatura (°C)
-TEMP_UMBRAL_ESTABLE = 60
-TEMP_UMBRAL_ELEVADA = 75
+# Los umbrales térmicos NO se fijan acá. Antes valían 60 y 75 °C para todo
+# equipo, y eso mentía en las dos direcciones: un portátil con Tjmax de 100 °C
+# quedaba marcado como "crítico" trabajando con normalidad, y en un equipo con
+# Tjmax de 85 °C la limitación real pasaba desapercibida. Ahora se derivan del
+# valor que publica el propio hardware — ver core/thermal.py, SensorTermico.umbrales().
 
 # Intervalo de frame para animaciones GLib (ms) ~60fps
 INTERVALO_FRAME_MS = 16

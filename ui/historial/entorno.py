@@ -5,16 +5,17 @@ Página de entorno del historial — Muestra información del sistema y hardware
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw
+from gi.repository import Gtk, Adw, GLib
 
 from utils.i18n import traducir
 from utils.lscpu import make_lscpu_finder, parse_lscpu_numeric, parse_lscpu_cache
+from core.hardware import obtener_perfil
 from widgets.legend import crear_chip_informativo
 
 
 def _crear_pagina_entorno(win):
-    import platform as _platform
     import os as _os
+    import platform as _platform
 
     pagina = Adw.PreferencesPage()
     versiones = getattr(win, 'versiones', {})
@@ -102,7 +103,17 @@ def _crear_pagina_entorno(win):
     import glob as _glob
 
     try:
-        lscpu_crudo = _subprocess.run(["lscpu", "-J"], capture_output=True, text=True, timeout=2)
+        # LC_ALL=C es obligatorio: lscpu TRADUCE los nombres de sus campos según
+        # el idioma del sistema. En español devuelve "Nombre del modelo" en vez
+        # de "Model name" y "Hilo(s) de procesamiento por núcleo" en vez de
+        # "Thread(s) per core", así que el parser no encontraba nada. Peor aún,
+        # la búsqueda por subcadena enganchaba campos equivocados y la pestaña
+        # mostraba cifras inventadas —en francés, "66 CPUs" a 66 MHz— sin dar
+        # ningún error. La aplicación se traduce a seis idiomas: esto afectaba a
+        # casi todos sus usuarios.
+        entorno_c = {**_os.environ, "LC_ALL": "C", "LANG": "C", "LANGUAGE": "C"}
+        lscpu_crudo = _subprocess.run(["lscpu", "-J"], capture_output=True, text=True,
+                                      timeout=5, env=entorno_c)
         datos_lscpu = _json.loads(lscpu_crudo.stdout) if lscpu_crudo.returncode == 0 and lscpu_crudo.stdout else None
     except (_subprocess.SubprocessError, _json.JSONDecodeError, OSError):
         datos_lscpu = None
@@ -133,44 +144,38 @@ def _crear_pagina_entorno(win):
             radar_frame.set_child(radar)
             radar_group.add(radar_frame)
 
-            buscar = make_lscpu_finder(mapa_plano)
-            valor_nucleos = buscar('cpu(s)', 'logical cpu(s)', 'cpus')
-            valor_hilos = buscar('hilo(s) de procesamiento por núcleo', 'thread(s) per core', 'hilo(s) por núcleo', 'hilo')
-            valor_freq = buscar('cpu mhz máx', 'cpu max mhz', 'velocidad máxima de cpu', 'max cpu mhz')
-            if not valor_freq:
-                valor_freq = buscar('cpu(s) factor de escala mhz', 'cpu mhz', 'mhz')
-            valor_l3 = buscar('l3', 'l3 cache', 'caché l3')
-            valor_l2 = buscar('l2', 'l2 cache', 'caché l2')
-            valor_nucleos_socket = buscar('núcleo(s) por', 'core(s) per socket', 'core(s)', 'núcleos por', 'nucleo')
-            if not valor_nucleos_socket:
-                valor_sockets = buscar('"socket(s)"', 'socket(s)', 'sockets') or '1'
-                if valor_nucleos and valor_sockets:
-                    try:
-                        nucleos_calculados = int(parse_lscpu_numeric(valor_nucleos)) // max(1, int(parse_lscpu_numeric(valor_sockets)))
-                        if valor_hilos:
-                            nucleos_calculados //= max(1, int(parse_lscpu_numeric(valor_hilos)))
-                        valor_nucleos_socket = str(nucleos_calculados) if nucleos_calculados > 0 else None
-                    except (ValueError, TypeError, ZeroDivisionError):
-                        pass
+            # Los datos del radar salen de /sys, no de lscpu. Además de ser
+            # inmunes al idioma, incluyen cosas que lscpu no distingue bien,
+            # como el reparto de núcleos P/E en los CPU híbridos.
+            perfil = obtener_perfil()
+            caches = perfil.caches
 
-            crudo = [valor_nucleos, valor_hilos, valor_freq, valor_l3, valor_l2, valor_nucleos_socket]
-            unidades_r = [e[2] for e in _RADAR_EJES]
-            def a_float(valores, idx):
-                if not valores: return 0.0
-                return parse_lscpu_cache(valores) if idx in (3, 4) else parse_lscpu_numeric(valores)
-            numeros_crudos = [a_float(v, i) for i, v in enumerate(crudo)]
-            predeterminados = [16.0, 4.0, 4000.0, 32.0, 8.0, 8.0]
+            numeros_crudos = [
+                float(perfil.hilos),
+                float(perfil.hilos_por_nucleo),
+                perfil.frecuencia_maxima_khz / 1000.0,   # kHz → MHz
+                caches.get("l3", 0) / 1024.0,            # KiB → MiB
+                caches.get("l2", 0) / 1024.0,
+                float(perfil.nucleos_fisicos),
+            ]
+
+            # El eje se escala al equipo. Con máximos fijos, una máquina de 2
+            # núcleos dibujaba una figura degenerada y una de 128 la saturaba.
+            predeterminados = [16.0, 4.0, 5000.0, 32.0, 8.0, 8.0]
             maximos = [max(v * 1.5, d) for v, d in zip(numeros_crudos, predeterminados)]
+            unidades_r = [e[2] for e in _RADAR_EJES]
+
             normalizados, labels = [], []
-            for idx, (fv, mx) in enumerate(zip(numeros_crudos, maximos)):
-                normalizados.append(min(1.0, fv / mx) if mx else 0.0)
-                u = unidades_r[idx]
-                if idx == 2 and fv:
-                    labels.append(f"{fv/1000:.1f}{u}")
-                elif idx in (3, 4) and fv:
-                    labels.append(f"{fv:.1f}{u}" if fv < 10 else f"{int(fv)}{u}")
+            for idx, (valor, maximo) in enumerate(zip(numeros_crudos, maximos)):
+                normalizados.append(min(1.0, valor / maximo) if maximo else 0.0)
+                unidad = unidades_r[idx]
+                if idx == 2 and valor:
+                    labels.append(f"{valor / 1000:.1f}{unidad}")
+                elif idx in (3, 4) and valor:
+                    labels.append(f"{valor:.1f}{unidad}" if valor < 10 else f"{int(valor)}{unidad}")
                 else:
-                    labels.append(f"{int(fv)}{u}" if fv else "?")
+                    labels.append(f"{int(valor)}{unidad}" if valor else "?")
+
             radar.set_data(normalizados, labels, raw_values=numeros_crudos)
 
             pagina.add(radar_group)
@@ -227,17 +232,14 @@ def _crear_pagina_entorno(win):
                 detalle_group.add(exp)
 
     # ── Procesador ──
-    modelo_cpu = "—"
-    try:
-        with open("/proc/cpuinfo") as f:
-            for linea in f:
-                if linea.startswith("model name"):
-                    modelo_cpu = linea.split(":", 1)[1].strip()
-                    break
-    except (OSError, ValueError):
-        pass
+    perfil_equipo = obtener_perfil()
+    modelo_cpu = perfil_equipo.modelo or "—"
     grupo_cpu = Adw.PreferencesGroup()
-    fila_cpu = Adw.ActionRow(title=f"<b>{modelo_cpu}</b>", subtitle=traducir("Información del procesador"))
+    # El texto del modelo viene del hardware y puede traer caracteres que Pango
+    # interprete como marcado; se escapa antes de insertarlo.
+    fila_cpu = Adw.ActionRow(
+        title=f"<b>{GLib.markup_escape_text(modelo_cpu)}</b>",
+        subtitle=perfil_equipo.descripcion_corta())
     fila_cpu.set_icon_name("power-profile-performance-symbolic")
     fila_cpu.set_use_markup(True)
     grupo_cpu.add(fila_cpu)

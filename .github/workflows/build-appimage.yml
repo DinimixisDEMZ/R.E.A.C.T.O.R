@@ -1,14 +1,116 @@
-name: Build AppImage
+name: CI
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  build:
+  # Las pruebas corren en cada push y en cada pull request. Antes el único
+  # trabajo construía la AppImage y no ejecutaba ni una sola prueba, así que un
+  # cambio podía romper la lógica y aun así producir una release verde.
+  pruebas:
+    name: Pruebas
     runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Se usa el Python del sistema con el PyGObject de la distribución en vez
+      # de `actions/setup-python` + compilar PyGObject desde fuente. Compilarlo
+      # funciona, pero tarda varios minutos y depende de las cabeceras de
+      # girepository y cairo; usar los paquetes de la distribución es más rápido
+      # y no puede romperse por un cambio de nombre de paquete de desarrollo.
+      - name: Instalar GTK 4, Libadwaita y PyGObject
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            python3 python3-pip python3-gi python3-gi-cairo python3-pytest \
+            gir1.2-gtk-4.0 gir1.2-adw-1
+          python3 -c "
+          import gi
+          gi.require_version('Gtk', '4.0'); gi.require_version('Adw', '1')
+          from gi.repository import Adw, Gtk
+          print(f'GTK {Gtk.MAJOR_VERSION}.{Gtk.MINOR_VERSION} · Libadwaita {Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}')
+          "
+
+      # ruff se instala para que tests/test_integridad.py pueda ejecutarlo. Ese
+      # test busca nombres indefinidos y closures sobre variables de bucle; sin
+      # ruff se salta en silencio, y fue precisamente lo que detectó un import
+      # ausente que ninguna prueba unitaria veía.
+      - name: Instalar ruff
+        run: pip install --break-system-packages --quiet ruff
+
+      # Las pruebas no necesitan pantalla: se comprobó explícitamente que la
+      # suite pasa sin DISPLAY y en un entorno sin sched_ext, sin planificadores
+      # instalados y sin sensores térmicos.
+      - name: Ejecutar pruebas
+        run: python3 -m pytest tests/
+
+  paquete:
+    name: Paquete (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Construir el wheel no necesita GTK ni PyGObject: son dependencias de
+      # ejecución, no de compilación.
+      - name: Construir el wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: Comprobar que el wheel está completo
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          nombres = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          # `main.py` y `app.py` viven en la raíz, no dentro de un paquete: si no
+          # entran en el wheel, el punto de entrada `reactor` se instala pero no
+          # arranca. Es exactamente lo que pasaba antes.
+          faltan = [f for f in ("main.py", "app.py") if f not in nombres]
+          assert not faltan, f"faltan en el wheel: {faltan}"
+          print("wheel completo")
+          PY
+
+      # --no-deps es deliberado. Lo que se comprueba aquí es que el wheel tenga
+      # la forma correcta, no que PyGObject compile: sin esa opción, pip intenta
+      # resolver las dependencias de ejecución (PyGObject, pycairo) y falla al
+      # no encontrar las cabeceras de cairo, que este trabajo no necesita.
+      # Los tres módulos elegidos son de stdlib pura a propósito.
+      - name: Comprobar que se instala
+        run: |
+          pip install --no-deps dist/*.whl
+          cd "$RUNNER_TEMP"
+          python -c "import core.hardware, core.sched_ext, core.dimensionado; print('modulos importan desde el paquete instalado')"
+
+  lint:
+    name: Estilo
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      # Informativo: el estilo no debe bloquear una corrección de un fallo.
+      - run: ruff check . --output-format=github || true
+
+  appimage:
+    name: AppImage
+    runs-on: ubuntu-24.04
+    needs: [pruebas, paquete]
     permissions:
       contents: write
 
@@ -40,7 +142,6 @@ jobs:
             VERSION="$(git rev-parse --short HEAD)"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION"
 
       - name: Ejecutar build
         env:
@@ -64,11 +165,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          gh release delete "v$VERSION" --yes 2>/dev/null || true
           NOTES="AppImage para R.E.A.C.T.O.R v${VERSION}
 
           **Incluye:** hyperfine (estático), cyclictest (estático), rt-tests source
-          **Requiere en el sistema:** GTK 4, libadwaita, scxctl, stress-ng, make, gcc"
+
+          **Requiere en el sistema:** GTK 4 y libadwaita.
+
+          **Opcional:** los planificadores scx (scx-scheds), el servicio
+          scx_loader o scxctl para el control completo, y stress-ng, make y gcc
+          para las pruebas de rendimiento. La aplicación arranca sin ellos y
+          explica qué queda limitado."
           gh release create "v$VERSION" \
             --title "R.E.A.C.T.O.R v$VERSION" \
             --notes "$NOTES" \

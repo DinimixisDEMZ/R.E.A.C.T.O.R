@@ -15,6 +15,7 @@ from utils.colores import obtener_color_tema
 from widgets.circular_meter import CircularMeter, _color_para_temperatura
 from core.constantes import CARGANDO
 from utils.i18n import traducir
+from core import sched_ext
 
 
 # ── Lectura de datos del Sistema (/proc) ──────────────────────────────────────
@@ -149,7 +150,14 @@ def actualizar_diagnostico_tiempo_real(win, controles):
     # 3. Temperatura
     t_temp = win.sensor.obtener_temp()
     if t_temp > 0:
-        controles["medidor_temp"].update(t_temp / 100.0, f"{t_temp:.1f} °C", color=_color_para_temperatura(t_temp))
+        # El medidor se normaliza contra el límite real del equipo, no contra
+        # 100 °C fijos: en un CPU con Tjmax de 85 °C el arco nunca llegaba al
+        # rojo aunque estuviera al borde del límite.
+        limite_termico = win.sensor.tjmax() if hasattr(win, "sensor") else 100.0
+        controles["medidor_temp"].update(
+            min(1.0, t_temp / limite_termico) if limite_termico else 0.0,
+            f"{t_temp:.1f} °C",
+            color=_color_para_temperatura(t_temp, limite_termico))
     else:
         controles["medidor_temp"].update(0.0, traducir("N/D"))
 
@@ -207,7 +215,66 @@ def actualizar_diagnostico_tiempo_real(win, controles):
     cm1, cm5, cm15 = obtener_carga_media()
     controles["lbl_carga_media"].set_label(f"{cm1}  •  {cm5}  •  {cm15}")
 
+    # 8. Estado y contadores de sched_ext
+    _actualizar_eventos_scx(controles)
+
     return True
+
+
+#: Nombres legibles para los contadores de eventos que publica el kernel.
+def _nombre_evento(clave):
+    return clave.replace("SCX_EV_", "").replace("_", " ").capitalize()
+
+
+def _actualizar_eventos_scx(controles):
+    """Refresca el estado y los contadores de sched_ext en la página de monitor."""
+    if "scx_estado" not in controles:
+        return
+
+    info = sched_ext.estado()
+    contadores = sched_ext.contadores()
+
+    nombre = info["scheduler"]
+    controles["scx_nombre"].set_label(nombre or traducir("Ninguno"))
+
+    etiquetas_estado = {
+        "enabled": traducir("Activo"),
+        "enabling": traducir("Cargando..."),
+        "disabling": traducir("Descargando..."),
+        "disabled": traducir("Inactivo"),
+    }
+    texto_estado = etiquetas_estado.get(info["estado"], info["estado"])
+    if info["activo"] and info["parcial"]:
+        texto_estado += traducir(" (modo parcial)")
+    controles["scx_estado"].set_label(texto_estado)
+
+    controles["scx_secuencia"].set_label(str(contadores["secuencia_activacion"]))
+    controles["scx_rechazadas"].set_label(str(contadores["rechazadas"]))
+
+    grupo = controles.get("scx_grupo_eventos")
+    filas = controles.get("scx_filas_eventos")
+    if grupo is None or filas is None:
+        return
+
+    eventos = sched_ext.eventos()
+
+    # Las filas de eventos que ya no existen se retiran; si no, quedaban
+    # colgando con el último valor de un planificador que ya no está cargado.
+    for clave in list(filas):
+        if clave not in eventos:
+            grupo.remove(filas.pop(clave)[0])
+
+    for clave, valor in sorted(eventos.items(), key=lambda kv: -kv[1])[:10]:
+        texto = f"{valor:,}".replace(",", ".")
+        if clave in filas:
+            filas[clave][1].set_label(texto)
+            continue
+        fila = Adw.ActionRow(title=_nombre_evento(clave))
+        etiqueta = Gtk.Label(label=texto, valign=Gtk.Align.CENTER,
+                             css_classes=["monospace"])
+        fila.add_suffix(etiqueta)
+        grupo.add(fila)
+        filas[clave] = (fila, etiqueta)
 
 
 # ── Construcción del Tab Monitor ──────────────────────────────────────────────
@@ -401,64 +468,44 @@ def configurar_pestana_monitor(win):
 
     pagina_pref.add(grupo_planif)
 
-    # ── Eventos del Scheduler (sysfs, sin root) ──
+    # ── Eventos de sched_ext ──
+    #
+    # Se lee todo a través de core/sched_ext, que normaliza los nombres y sabe
+    # que el kernel publica el planificador sin el prefijo "scx_". Antes se
+    # abrían las rutas a mano y el contenido se leía UNA sola vez, al construir
+    # la página: los contadores quedaban congelados en el valor que tuvieran al
+    # abrir la aplicación, aparentando estar en vivo.
     grupo_eventos_scx = Adw.PreferencesGroup(
         title=traducir("Eventos de sched_ext"),
-        description=traducir("Contadores del planificador BPF activo — lecturas de /sys/kernel/sched_ext/")
+        description=traducir("Contadores del planificador BPF activo, leídos de /sys/kernel/sched_ext/")
     )
-    try:
-        ops = open("/sys/kernel/sched_ext/root/ops").read().strip()
-    except (OSError, ValueError):
-        ops = "—"
-    fila_nombre_scx = Adw.ActionRow(title=traducir("Planificador Activo"))
-    lbl_nombre_scx = Gtk.Label(label=ops, valign=Gtk.Align.CENTER, css_classes=["caption-heading"])
-    fila_nombre_scx.add_suffix(lbl_nombre_scx)
-    grupo_eventos_scx.add(fila_nombre_scx)
 
-    try:
-        estado = open("/sys/kernel/sched_ext/state").read().strip()
-    except (OSError, ValueError):
-        estado = "—"
-    fila_estado_scx = Adw.ActionRow(title=traducir("Estado"))
-    lbl_estado_scx = Gtk.Label(label=estado, valign=Gtk.Align.CENTER)
-    fila_estado_scx.add_suffix(lbl_estado_scx)
-    grupo_eventos_scx.add(fila_estado_scx)
-
-    try:
-        secuencia = open("/sys/kernel/sched_ext/enable_seq").read().strip()
-    except (OSError, ValueError):
-        secuencia = "—"
-    fila_secuencia_scx = Adw.ActionRow(title=traducir("Secuencia de Activación"))
-    lbl_secuencia_scx = Gtk.Label(label=secuencia, valign=Gtk.Align.CENTER)
-    fila_secuencia_scx.add_suffix(lbl_secuencia_scx)
-    grupo_eventos_scx.add(fila_secuencia_scx)
-
-    try:
-        rechazado = open("/sys/kernel/sched_ext/nr_rejected").read().strip()
-    except (OSError, ValueError):
-        rechazado = "—"
-    fila_rechazados_scx = Adw.ActionRow(title=traducir("Tareas Rechazadas"))
-    lbl_rechazados_scx = Gtk.Label(label=rechazado, valign=Gtk.Align.CENTER)
-    fila_rechazados_scx.add_suffix(lbl_rechazados_scx)
-    grupo_eventos_scx.add(fila_rechazados_scx)
-
-    try:
-        archivos_eventos = glob.glob("/sys/kernel/sched_ext/*/events")
-        lineas_eventos = []
-        for ae in archivos_eventos:
-            for linea in open(ae).read().strip().splitlines():
-                partes = linea.split(None, 1)
-                if len(partes) == 2:
-                    nombre = partes[0].replace("SCX_EV_", "").replace("_", " ").title()
-                    lineas_eventos.append((nombre, partes[1]))
-        lineas_eventos.sort(key=lambda x: -int(x[1]) if x[1].isdigit() else 0)
-        for nombre_ev, valor_ev in lineas_eventos[:10]:
-            fila = Adw.ActionRow(title=nombre_ev)
-            lbl = Gtk.Label(label=valor_ev, valign=Gtk.Align.CENTER, css_classes=["monospace"])
-            fila.add_suffix(lbl)
+    controles_scx = {}
+    if not sched_ext.hay_soporte():
+        fila_sin_soporte = Adw.ActionRow(
+            title=traducir("Este kernel no tiene sched_ext"),
+            subtitle=traducir("El resto del diagnóstico funciona con normalidad."))
+        fila_sin_soporte.set_icon_name("dialog-information-symbolic")
+        grupo_eventos_scx.add(fila_sin_soporte)
+    else:
+        for clave, titulo in (
+            ("scx_nombre", traducir("Planificador Activo")),
+            ("scx_estado", traducir("Estado")),
+            ("scx_secuencia", traducir("Secuencia de Activación")),
+            ("scx_rechazadas", traducir("Tareas Rechazadas")),
+        ):
+            fila = Adw.ActionRow(title=titulo)
+            etiqueta = Gtk.Label(label=traducir(CARGANDO), valign=Gtk.Align.CENTER)
+            if clave == "scx_nombre":
+                etiqueta.add_css_class("caption-heading")
+            fila.add_suffix(etiqueta)
             grupo_eventos_scx.add(fila)
-    except (OSError, ValueError):
-        pass
+            controles_scx[clave] = etiqueta
+
+        # Los contadores por evento sólo existen mientras hay un planificador
+        # cargado, así que el grupo se rellena y se vacía en caliente.
+        controles_scx["scx_grupo_eventos"] = grupo_eventos_scx
+        controles_scx["scx_filas_eventos"] = {}
 
     pagina_pref.add(grupo_eventos_scx)
 
@@ -475,6 +522,7 @@ def configurar_pestana_monitor(win):
         "lbl_procs_ejecutando": lbl_procs_ejecutando,
         "lbl_procs_bloqueados": lbl_procs_bloqueados,
         "lbl_carga_media": lbl_carga_media,
+        **controles_scx,
     }
 
     return pagina_pref, controles

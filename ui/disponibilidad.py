@@ -11,10 +11,13 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
-from utils.logging import log
+from utils.logging import log, registrar_error
 from utils.helpers import limpiar_texto
 from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad, obtener_historial_compatibilidad
 from utils.i18n import traducir
+from core import sched_ext
+from core.sched_ext import canonizar, nombre_corto
+from core.tipos import obtener_scheduler
 
 
 def _mensaje_corto(msg, compatible):
@@ -58,7 +61,7 @@ def configurar_ui_disponibilidad(win):
 
     grupo = Adw.PreferencesGroup(
         title=traducir("Compatibilidad de Planificadores"),
-        description=traducir("Comprueba si el programa BPF de cada planificador puede cargarse en el kernel actual. La verificación requiere privilegios de administrador.")
+        description=traducir("Comprueba que el binario de cada planificador pueda ejecutarse en este equipo. La comprobación básica no necesita privilegios y no altera el planificador activo.")
     )
 
     try:
@@ -70,7 +73,8 @@ def configurar_ui_disponibilidad(win):
     cache = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
 
     for nombre in nombres:
-        row = Adw.ActionRow(title=nombre)
+        # Se muestra el nombre corto; internamente todo es canónico.
+        row = Adw.ActionRow(title=nombre_corto(nombre))
 
         suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
         spinner = Adw.Spinner()
@@ -180,7 +184,8 @@ def recargar_disponibilidad_ui(win):
 
     # Añadir filas nuevas
     for nombre in nuevos_set - antiguos:
-        row = Adw.ActionRow(title=nombre)
+        # Se muestra el nombre corto; internamente todo es canónico.
+        row = Adw.ActionRow(title=nombre_corto(nombre))
 
         suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
         spinner = Adw.Spinner()
@@ -355,59 +360,112 @@ def _verificar_scheduler_dev(win, nombre, row, spinner, icono):
     return nombre if disponible else None
 
 
-def _verificar_scheduler_real(win, nombre, row, spinner, icono):
+def _verificar_scheduler_real(win, nombre, row, spinner, icono, profundo=False):
+    """Comprueba si un planificador puede usarse en este equipo.
+
+    La verificación tenía dos problemas graves. El primero, que la ruta se
+    construía a mano como `/usr/bin/scx_{nombre}` mientras `nombre` ya venía con
+    el prefijo, así que intentaba ejecutar `/usr/bin/scx_scx_bpfland`: la prueba
+    nunca ejecutó nada. El segundo, que para "verificar" arrancaba de verdad
+    cada planificador durante cinco segundos, con lo que una simple comprobación
+    reconfiguraba el planificador del sistema una decena de veces.
+
+    Ahora hay dos niveles. El básico ejecuta el binario con `--version`, sin
+    privilegios: eso ya detecta lo que de verdad falla en la práctica (binario
+    ausente, enlazado contra librerías que no están, arquitectura incorrecta).
+    El profundo, opcional, sí lo carga en el kernel y confirma la activación
+    leyendo `/sys/kernel/sched_ext` en vez de adivinarla buscando frases en la
+    salida del programa.
+    """
     def _reset(r=row, s=spinner, i=icono):
         r.set_subtitle(traducir("Verificando..."))
         i.set_visible(False)
         s.set_visible(True)
     GLib.idle_add(_reset)
 
+    canonico = canonizar(nombre)
+    corto = nombre_corto(canonico)
     disponible = False
-    is_warn = False
-    msg = traducir("Desconocido")
+    es_aviso = False
+    mensaje = traducir("Desconocido")
+
+    instalados = sched_ext.schedulers_instalados()
+    ruta = instalados.get(canonico)
 
     try:
-        win.scx.detener_todos()
-        time.sleep(0.3)
-
-        log(win.text_view_logs_disp, traducir("Probando scx_{}...").format(nombre))
-        result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", f"/usr/bin/scx_{nombre}"])
-        output = (result.stdout + result.stderr).strip()
-
-        if output:
-            limpio = limpiar_texto(output)
-            if limpio:
-                log(win.text_view_logs_disp, traducir("Resumen de scx_{}:\n{}").format(nombre, limpio))
-
-        has_error = any(kw in output for kw in ["Failed to load BPF", "No such file or directory", "Error:"])
-
-        if has_error:
-            lineas = [l for l in output.splitlines() if l.strip() and "[INFO]" not in l]
-            msg = lineas[-1].strip() if lineas else traducir("Programa BPF incompatible")
+        if not ruta:
+            mensaje = traducir("No está instalado en este sistema")
+        elif not sched_ext.hay_soporte():
+            mensaje = traducir("El kernel no tiene sched_ext")
         else:
-            started_ok = any(kw in output for kw in ["Calibration complete", "scheduler started", "Received shutdown signal", "ACTIVE"])
-            if result.returncode in [0, 124, 137] or started_ok:
+            log(win.text_view_logs_disp, traducir("Probando {}...").format(canonico))
+            resultado = subprocess.run([ruta, "--version"], capture_output=True,
+                                       text=True, timeout=15)
+            salida = ((resultado.stdout or "") + (resultado.stderr or "")).strip()
+
+            # Varios planificadores devuelven un código distinto de cero al
+            # imprimir la versión; lo que importa es si el binario llegó a
+            # ejecutarse y dijo algo.
+            if salida:
                 disponible = True
-                is_warn = result.returncode == 0 and not started_ok
-                if started_ok:
-                    msg = traducir("Disponible (Verificado)")
-                elif result.returncode in [124, 137]:
-                    msg = traducir("Disponible (Residente)")
-                else:
-                    msg = traducir("Disponible (Shutdown detectado)")
+                mensaje = traducir("Disponible — {}").format(salida.splitlines()[0][:60])
             else:
-                lineas = [l for l in output.splitlines() if l.strip()]
-                msg = lineas[-1].strip() if lineas else traducir("Error de salida ({})").format(result.returncode)
+                mensaje = traducir("El binario no respondió")
 
+            ficha = obtener_scheduler(canonico)
+            if disponible and ficha is not None:
+                if ficha.requiere_config:
+                    es_aviso = True
+                    mensaje = traducir("Disponible, pero necesita configuración")
+                elif ficha.experimental:
+                    es_aviso = True
+                    mensaje = traducir("Disponible (experimental)")
+
+            if disponible and profundo and ficha is not None and ficha.apto_para_benchmark:
+                disponible, es_aviso, mensaje = _probar_carga_real(win, canonico, mensaje)
+
+    except subprocess.TimeoutExpired:
+        mensaje = traducir("El binario no respondió a tiempo")
     except (subprocess.SubprocessError, OSError) as e:
-        msg = str(e)
+        mensaje = str(e)
 
-    msg_safe = GLib.markup_escape_text(msg)
-    guardar_compatibilidad(nombre, win.versiones.get("kernel", ""), disponible, msg_safe)
-    GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=msg_safe, w=is_warn:
+    if not disponible:
+        log(win.text_view_logs_disp,
+            traducir("{}: {}").format(corto, mensaje), nivel="warning")
+
+    mensaje_seguro = GLib.markup_escape_text(mensaje)
+    guardar_compatibilidad(canonico, win.versiones.get("kernel", ""), disponible, mensaje_seguro)
+    GLib.idle_add(lambda r=row, s=spinner, i=icono, ok=disponible, t=mensaje_seguro, w=es_aviso:
                   _actualizar_fila(r, s, i, ok, t, w))
-    win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-    return nombre if disponible else None
+    return canonico if disponible else None
+
+
+def _probar_carga_real(win, canonico, mensaje_previo):
+    """Carga el planificador en el kernel y comprueba que quede activo.
+
+    Devuelve (disponible, es_aviso, mensaje). La activación se confirma con
+    `/sys/kernel/sched_ext/state`, que es la única fuente que no depende de que
+    cada programa imprima una frase concreta.
+    """
+    resultado = win.scx.aplicar(canonico, "auto")
+    if not resultado.ok:
+        if resultado.codigo in ("cancelado", "no_autorizado"):
+            # No es un fallo del planificador: no debe marcarse incompatible.
+            return True, True, traducir("Sin verificar (se canceló la autorización)")
+        return False, False, resultado.mensaje or traducir("No se pudo cargar")
+
+    activo = False
+    for _ in range(20):  # hasta 4 s esperando a que el kernel lo confirme
+        info = sched_ext.estado()
+        if info["activo"] and info["scheduler"] == canonico:
+            activo = True
+            break
+        time.sleep(0.2)
+
+    win.scx.detener()
+    if activo:
+        return True, False, traducir("Verificado: se cargó en el kernel")
+    return False, False, traducir("Se lanzó pero el kernel no lo activó")
 
 
 def _finalizar_verificacion(win, exitosos):
@@ -441,27 +499,42 @@ def iniciar_verificacion(win, btn=None):
     if win._verificando:
         return
 
+    win._verificando = True
+
     def _proceder():
         def _ejecutar():
-            win._verificando = True
             exitosos = []
             GLib.idle_add(win._btn_verificar_disp.set_sensitive, False)
             log(win.text_view_logs_disp, traducir("INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF"), nivel="title")
 
-            win.scx.detener_todos()
-            time.sleep(1.5)
+            # Se recuerda qué estaba corriendo para poder devolver el equipo a
+            # su estado original al terminar.
+            estado_previo = sched_ext.estado()["scheduler"]
 
-            for nombre, (row, spinner, icono) in list(win._disp_filas.items()):
-                if win.modo_desarrollador:
-                    r = _verificar_scheduler_dev(win, nombre, row, spinner, icono)
-                else:
-                    r = _verificar_scheduler_real(win, nombre, row, spinner, icono)
-                if r is not None:
-                    exitosos.append(r)
+            try:
+                for nombre, (row, spinner, icono) in list(win._disp_filas.items()):
+                    if win.modo_desarrollador:
+                        r = _verificar_scheduler_dev(win, nombre, row, spinner, icono)
+                    else:
+                        r = _verificar_scheduler_real(win, nombre, row, spinner, icono)
+                    if r is not None:
+                        exitosos.append(r)
 
-            _finalizar_verificacion(win, exitosos)
-            win._verificando = False
+                if estado_previo and sched_ext.estado()["scheduler"] != estado_previo:
+                    log(win.text_view_logs_disp,
+                        traducir("Restaurando {}...").format(estado_previo))
+                    win.scx.aplicar(estado_previo, "auto")
+            except Exception as e:
+                # Sin este bloque, una excepción dejaba `_verificando` puesto y
+                # el botón deshabilitado: la pestaña quedaba muerta hasta
+                # reiniciar la aplicación, y sin decir por qué.
+                registrar_error("iniciar_verificacion", e)
+                log(win.text_view_logs_disp, str(e), nivel="error")
+            finally:
+                _finalizar_verificacion(win, exitosos)
+                win._verificando = False
 
         threading.Thread(target=_ejecutar, daemon=True).start()
 
-    win.solicitar_sudo_si_necesario(_proceder)
+    # La comprobación básica no necesita privilegios; se ejecuta directamente.
+    _proceder()

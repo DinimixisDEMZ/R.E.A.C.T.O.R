@@ -17,6 +17,7 @@ from core.constantes import SISTEMA_BASE
 
 from utils.logging import log as _log, log_subprocess_output, log_error_benchmark
 from utils.helpers import limpiar_texto as _limpiar_texto, resultado_base
+from core.dimensionado import obtener_dimensionado
 
 
 def _parsear_yaml_simple(contenido):
@@ -58,14 +59,14 @@ def _parsear_yaml_simple(contenido):
     return metricas
 
 
-def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_dev=False):
+def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=None, logs=True, modo_dev=False):
     """Ejecuta una prueba de rendimiento con stress-ng.
     
     Args:
         tipo: "cpu" (latencia), "threads" (multitarea), "memory" (eficiencia)
         scx_manager: Instancia de GestorScx para consultar el estado
         tv_log: TextView para logging (puede ser None)
-        tiempo: Duración en segundos
+        tiempo: Duración en segundos. None = se calcula según el equipo.
         logs: Si True, escribe en el log
         modo_dev: Si True, genera datos simulados
         
@@ -81,7 +82,13 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         if logs and tv_log:
             _log(tv_log, f"INICIANDO: {tipo.upper()} ({sc_act} [{modo_act}])", nivel="title")
         
-        cores = os.cpu_count() or 4
+        # El dimensionado sale del equipo, no de `os.cpu_count()`: esa función
+        # ignora la afinidad del proceso y la cuota de cgroup, así que dentro de
+        # un contenedor limitado a 2 CPUs seguía lanzando 16 trabajadores y la
+        # prueba medía el solapamiento en vez del planificador.
+        dim = obtener_dimensionado()
+        cores = dim.trabajadores
+        tiempo = tiempo or dim.duracion
         
         # ── Modo Desarrollador: Datos simulados ──
         if modo_dev:
@@ -130,7 +137,7 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         elif tipo == "memory":
             cmd = [
                 "stress-ng",
-                "--mutex", str(cores * 2),
+                "--mutex", str(dim.trabajadores_contencion),
                 "--timeout", f"{tiempo}s",
                 "--metrics-brief",
                 "--yaml", yaml_path,
@@ -197,15 +204,26 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
             _log(tv_log, f"  wall_time:       {wall_time:>12.2f}s")
             _log(tv_log, f"  ns_per_switch:   {ns_per_switch:>12,.2f}")
         
-        # P95 equivalente: latencia directa cuando está disponible
+        # Latencia equivalente, en µs, cuando stress-ng la reporta de verdad.
+        #
+        # `p95_valido` no es un adorno: antes, cuando la métrica no estaba
+        # disponible, se usaba el valor centinela 1.0. Ese 1.0 entraba después
+        # en el cálculo del mejor p95 global, así que el planificador AL QUE LE
+        # FALTABA EL DATO se convertía en la referencia y ganaba la categoría,
+        # hundiendo a los que sí habían medido. Ahora se marca como inválido y
+        # el término de latencia simplemente no puntúa para esa entrada.
+        p95_valido = True
         if tipo == "cpu" and ns_per_switch > 0:
             p95 = ns_per_switch / 1000.0
         elif tipo == "memory" and ns_per_mutex > 0:
             p95 = ns_per_mutex / 1000.0
-        elif ops_usr_sys > 0 and ops_real > 0:
-            p95 = (ops_usr_sys / ops_real - 1.0) * 100.0 if ops_usr_sys > ops_real else 1.0
+        elif ops_usr_sys > 0 and ops_real > 0 and ops_usr_sys > ops_real:
+            # Sobrecoste de CPU respecto al tiempo real, en porcentaje. No es
+            # una latencia, pero sí una medida comparable de eficiencia.
+            p95 = (ops_usr_sys / ops_real - 1.0) * 100.0
         else:
             p95 = 1.0
+            p95_valido = False
         
         # Waste: ratio de desperdicio de CPU (0.0 = uso perfecto, >0 = desperdicio)
         if cpu_usage > 0:
@@ -237,6 +255,10 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
         
         resultado = resultado_base(scx_manager, tipo, valor, p95, waste, sc_act, modo_act)
         resultado.update({
+            "p95_valido": p95_valido,
+            # El dimensionado se guarda con el resultado: dos mediciones sólo
+            # son comparables si se tomaron con la misma carga.
+            "dimensionado": dim.como_diccionario(),
             "metrics": metricas, "raw_yaml": contenido,
             "ops_real": ops_real, "ops_usr_sys": ops_usr_sys,
             "cpu_usage": cpu_usage, "wall_time": wall_time,

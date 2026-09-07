@@ -47,13 +47,20 @@ def vaciar_contenedor(container):
 
 
 def resultado_base(scx_manager, tipo, valor, p95, waste, sc_act=None, modo_act=None):
+    """Arma el registro de un resultado de benchmark.
+
+    El planificador se guarda tal cual está: si no hay ningún scheduler BPF
+    activo, la medición corresponde al planificador del kernel y se etiqueta
+    como tal. Etiquetarla con el nombre de un scheduler scx mezclaría en el
+    historial mediciones del kernel base con mediciones de ese scheduler, y
+    haría que la comparación entre ambos fuera imposible.
+    """
     from core.constantes import SISTEMA_BASE
     if sc_act is None or modo_act is None:
         sc_act, modo_act = scx_manager.obtener_estado()
-    sc_act = sc_act or SISTEMA_BASE
     return {
         "tipo": tipo, "valor": valor, "p95": p95, "waste": waste,
-        "sched": sc_act if sc_act != SISTEMA_BASE else "scx_rusty",
+        "sched": sc_act or SISTEMA_BASE,
         "modo": modo_act or "default",
         "timestamp": time.time()
     }
