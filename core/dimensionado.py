@@ -32,6 +32,11 @@ DURACION_POR_DEFECTO = 8
 #: pruebas se alargan, porque con pocos núcleos el ruido pesa más.
 HILOS_EQUIPO_PEQUENO = 4
 
+#: Tope de procesos para la prueba de contención. La sobresuscripción es
+#: intencionada, pero sin límite un equipo de muchos hilos lanzaría cientos de
+#: procesos y se mediría el coste de crearlos, no la contención.
+MAXIMO_CONTENCION = 128
+
 
 class Dimensionado:
     """Parámetros de una batería de pruebas, ya adaptados al equipo."""
@@ -58,9 +63,11 @@ class Dimensionado:
         """Procesos para la prueba de contención (mutex).
 
         Se pide más carga que núcleos a propósito: sin sobresuscripción no hay
-        contención que medir y la prueba no dice nada del planificador.
+        contención que medir y la prueba no dice nada del planificador. El tope
+        evita que un equipo de muchos hilos acabe midiendo el coste de crear
+        procesos en vez de la contención entre ellos.
         """
-        return max(2, self.trabajadores * 2)
+        return max(2, min(MAXIMO_CONTENCION, self.trabajadores * 2))
 
     # ── tiempo ──
 

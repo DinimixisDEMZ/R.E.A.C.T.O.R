@@ -109,3 +109,18 @@ class TestCacheNoContaminada:
 
     def test_el_dimensionado_normal_si_se_cachea(self):
         assert obtener_dimensionado() is obtener_dimensionado()
+
+
+class TestEquiposExtremos:
+    def test_la_contencion_tiene_tope(self):
+        """Sin tope, un equipo de muchos hilos mediría el coste de crear
+        procesos en vez de la contención entre ellos."""
+        from core.dimensionado import MAXIMO_CONTENCION
+        dim = Dimensionado(perfil=_perfil(hilos=256))
+        assert dim.trabajadores_contencion <= MAXIMO_CONTENCION
+
+    def test_un_equipo_de_un_solo_hilo_sigue_siendo_valido(self):
+        dim = Dimensionado(perfil=_perfil(hilos=1))
+        assert dim.trabajadores == 1
+        assert dim.trabajadores_contencion >= 2
+        assert dim.duracion >= DURACION_MINIMA

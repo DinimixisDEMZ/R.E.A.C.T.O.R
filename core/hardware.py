@@ -549,7 +549,10 @@ class PerfilMaquina:
         if self.es_hibrida:
             partes.append(f"{self.nucleos_rendimiento}P+{self.nucleos_eficiencia}E")
         partes.append(f"{self.nucleos_fisicos}c/{self.hilos}h")
-        partes.append(f"{self.ram_total_kib // 1024 // 1024} GiB")
+        # Se omite la memoria si no se pudo leer: mostrar "0 GiB" sería dar por
+        # cierto un dato que no se tiene.
+        if self.ram_total_kib:
+            partes.append(f"{self.ram_total_kib // 1024 // 1024} GiB")
         if self.es_virtual:
             partes.append(f"[{self.virtualizacion}]")
         return " · ".join(partes)

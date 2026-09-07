@@ -220,3 +220,36 @@ class TestPerfilReal:
     def test_tipo_de_equipo_es_uno_de_los_previstos(self):
         assert PerfilMaquina().tipo_equipo in (
             "portatil", "escritorio", "virtual", "desconocido")
+
+
+class TestDegradacionTotal:
+    """Un equipo donde no se puede leer nada: ni /sys, ni /proc, ni sensores."""
+
+    def _sin_nada(self):
+        return (
+            patch.object(hardware, "leer_texto", return_value=None),
+            patch.object(hardware, "leer_entero", return_value=None),
+            patch.object(hardware.glob, "glob", return_value=[]),
+            patch("builtins.open", side_effect=OSError("sin acceso")),
+        )
+
+    def test_el_perfil_se_construye_igual(self):
+        a, b, c, d = self._sin_nada()
+        with a, b, c, d:
+            perfil = PerfilMaquina()
+            assert perfil.hilos >= 1
+            assert perfil.nucleos_fisicos >= 1
+            assert perfil.hilos_para_carga >= 1
+            assert perfil.tipo_equipo == "desconocido"
+
+    def test_no_se_inventa_la_memoria_que_no_pudo_leer(self):
+        """Mostrar "0 GiB" sería dar por cierto un dato que no se tiene."""
+        a, b, c, d = self._sin_nada()
+        with a, b, c, d:
+            assert "GiB" not in PerfilMaquina().descripcion_corta()
+
+    def test_el_diccionario_de_entorno_sigue_siendo_serializable(self):
+        import json
+        a, b, c, d = self._sin_nada()
+        with a, b, c, d:
+            json.dumps(PerfilMaquina().como_diccionario())
