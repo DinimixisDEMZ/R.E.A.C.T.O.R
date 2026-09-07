@@ -14,6 +14,45 @@ jobs:
   pruebas:
     name: Pruebas
     runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Se usa el Python del sistema con el PyGObject de la distribución en vez
+      # de `actions/setup-python`. Compilar PyGObject desde fuente necesita las
+      # cabeceras de girepository, cuyo nombre de paquete cambió entre versiones
+      # de Ubuntu (`libgirepository1.0-dev` frente a `libgirepository-2.0-dev`):
+      # acertar ese nombre es justo el tipo de detalle que rompe una CI en
+      # silencio meses después. Los paquetes gir1.2-* son estables.
+      - name: Instalar GTK 4, Libadwaita y PyGObject
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            python3 python3-pip python3-gi python3-gi-cairo python3-pytest \
+            gir1.2-gtk-4.0 gir1.2-adw-1
+          python3 -c "
+          import gi
+          gi.require_version('Gtk', '4.0'); gi.require_version('Adw', '1')
+          from gi.repository import Adw, Gtk
+          print(f'GTK {Gtk.MAJOR_VERSION}.{Gtk.MINOR_VERSION} · Libadwaita {Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}')
+          "
+
+      # ruff se instala para que tests/test_integridad.py pueda ejecutarlo. Ese
+      # test busca nombres indefinidos y closures sobre variables de bucle; sin
+      # ruff se salta en silencio, y fue precisamente lo que detectó un import
+      # ausente que ninguna prueba unitaria veía.
+      - name: Instalar ruff
+        run: pip install --break-system-packages --quiet ruff
+
+      # Las pruebas no necesitan pantalla: se comprobó explícitamente que la
+      # suite pasa sin DISPLAY y en un entorno sin sched_ext, sin planificadores
+      # instalados y sin sensores térmicos.
+      - name: Ejecutar pruebas
+        run: python3 -m pytest tests/
+
+  paquete:
+    name: Paquete (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -22,39 +61,34 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Preparar Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Instalar dependencias del sistema
+      # Construir el wheel no necesita GTK ni PyGObject: son dependencias de
+      # ejecución, no de compilación.
+      - name: Construir el wheel
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libgirepository-2.0-dev libcairo2-dev pkg-config \
-            gir1.2-gtk-4.0 gir1.2-adw-1 gobject-introspection
-
-      - name: Instalar el proyecto
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[test]"
-
-      - name: Ejecutar pruebas
-        run: pytest
-
-      - name: Comprobar que el paquete se construye
-        run: |
-          pip install build
+          python -m pip install --upgrade pip build
           python -m build --wheel
+
+      - name: Comprobar que el wheel está completo
+        run: |
           python - <<'PY'
           import glob, zipfile
           nombres = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
-          # `main.py` y `app.py` están en la raíz: si no entran en el wheel, el
-          # punto de entrada `reactor` se instala pero no arranca.
-          for obligatorio in ("main.py", "app.py"):
-              assert obligatorio in nombres, f"falta {obligatorio} en el wheel"
+          # `main.py` y `app.py` viven en la raíz, no dentro de un paquete: si no
+          # entran en el wheel, el punto de entrada `reactor` se instala pero no
+          # arranca. Es exactamente lo que pasaba antes.
+          faltan = [f for f in ("main.py", "app.py") if f not in nombres]
+          assert not faltan, f"faltan en el wheel: {faltan}"
           print("wheel completo")
           PY
+
+      - name: Comprobar que se instala
+        run: |
+          pip install dist/*.whl
+          python -c "import core.hardware, core.sched_ext, core.dimensionado; print('modulos importan desde el paquete instalado')"
 
   lint:
     name: Estilo
@@ -71,7 +105,7 @@ jobs:
   appimage:
     name: AppImage
     runs-on: ubuntu-24.04
-    needs: pruebas
+    needs: [pruebas, paquete]
     permissions:
       contents: write
 
