@@ -17,6 +17,7 @@ from core.constantes import SISTEMA_BASE
 
 from utils.logging import log as _log, log_subprocess_output, log_error_benchmark
 from utils.helpers import limpiar_texto as _limpiar_texto, resultado_base
+from core.dimensionado import obtener_dimensionado
 
 
 def _parsear_yaml_simple(contenido):

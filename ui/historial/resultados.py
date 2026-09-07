@@ -64,10 +64,15 @@ def _reconstruir_chips(win):
     planificadores = sorted(obtener_schedulers_historial())
 
     for planif in planificadores:
-        r, g, b = generar_color_hash(planif)
+        color = generar_color_hash(planif)
 
+        # Los valores se fijan como argumentos por defecto. Una `lambda` que
+        # cierra sobre la variable del bucle lee el valor que ésta tenga cuando
+        # la lambda se EJECUTA, no cuando se define: todos los chips acababan
+        # pintados con el color del último planificador de la lista.
         crear_chip_leyenda(
-            planif, color_func=lambda n: (r, g, b) if n == planif else (0.5, 0.5, 0.5),
+            planif,
+            color_func=lambda n, _c=color, _p=planif: _c if n == _p else (0.5, 0.5, 0.5),
             on_toggle=lambda s, v: _refrescar_historial(win), dot_radius=4, dot_size=10,
             opacity_hidden=0.5, ocultos_set=win._hist_chips_active,
             box_leyenda=caja
@@ -81,7 +86,6 @@ def _refrescar_historial(win):
 
     activos = getattr(win, "_hist_chips_active", set())
     sched = list(activos)[0] if len(activos) == 1 else None
-    test = None
 
     resultados = consultar_historial(
         scheduler=sched, test_type=None, date_from=fecha_desde,

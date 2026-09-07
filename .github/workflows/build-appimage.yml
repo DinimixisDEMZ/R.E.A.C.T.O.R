@@ -1,14 +1,77 @@
-name: Build AppImage
+name: CI
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  build:
+  # Las pruebas corren en cada push y en cada pull request. Antes el único
+  # trabajo construía la AppImage y no ejecutaba ni una sola prueba, así que un
+  # cambio podía romper la lógica y aun así producir una release verde.
+  pruebas:
+    name: Pruebas
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Preparar Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Instalar dependencias del sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgirepository-2.0-dev libcairo2-dev pkg-config \
+            gir1.2-gtk-4.0 gir1.2-adw-1 gobject-introspection
+
+      - name: Instalar el proyecto
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+
+      - name: Ejecutar pruebas
+        run: pytest
+
+      - name: Comprobar que el paquete se construye
+        run: |
+          pip install build
+          python -m build --wheel
+          python - <<'PY'
+          import glob, zipfile
+          nombres = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          # `main.py` y `app.py` están en la raíz: si no entran en el wheel, el
+          # punto de entrada `reactor` se instala pero no arranca.
+          for obligatorio in ("main.py", "app.py"):
+              assert obligatorio in nombres, f"falta {obligatorio} en el wheel"
+          print("wheel completo")
+          PY
+
+  lint:
+    name: Estilo
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      # Informativo: el estilo no debe bloquear una corrección de un fallo.
+      - run: ruff check . --output-format=github || true
+
+  appimage:
+    name: AppImage
+    runs-on: ubuntu-24.04
+    needs: pruebas
     permissions:
       contents: write
 
@@ -40,7 +103,6 @@ jobs:
             VERSION="$(git rev-parse --short HEAD)"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION"
 
       - name: Ejecutar build
         env:
@@ -64,11 +126,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          gh release delete "v$VERSION" --yes 2>/dev/null || true
           NOTES="AppImage para R.E.A.C.T.O.R v${VERSION}
 
           **Incluye:** hyperfine (estático), cyclictest (estático), rt-tests source
-          **Requiere en el sistema:** GTK 4, libadwaita, scxctl, stress-ng, make, gcc"
+
+          **Requiere en el sistema:** GTK 4 y libadwaita.
+
+          **Opcional:** los planificadores scx (scx-scheds), el servicio
+          scx_loader o scxctl para el control completo, y stress-ng, make y gcc
+          para las pruebas de rendimiento. La aplicación arranca sin ellos y
+          explica qué queda limitado."
           gh release create "v$VERSION" \
             --title "R.E.A.C.T.O.R v$VERSION" \
             --notes "$NOTES" \

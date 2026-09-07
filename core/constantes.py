@@ -2,7 +2,10 @@
 Constantes compartidas del proyecto R.E.A.C.T.O.R.
 """
 
-VERSION = "1.0"
+# Fuente única de la versión. El script de empaquetado la sobrescribe desde el
+# tag de git al construir, así que aquí vive el número de la versión EN CURSO,
+# no el de la última publicada (v1.0.5).
+VERSION = "1.1.0.dev0"
 
 # Los umbrales térmicos NO se fijan acá. Antes valían 60 y 75 °C para todo
 # equipo, y eso mentía en las dos direcciones: un portátil con Tjmax de 100 °C
