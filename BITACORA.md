@@ -1,5 +1,91 @@
 # Bitácora de Desarrollo — R.E.A.C.T.O.R
 
+## 2026-09-06 — Modernización al ecosistema scx 2026 y adaptación al hardware
+
+### Objetivo
+Revivir el proyecto, que llevaba meses pausado, y hacer que funcione en
+cualquier PC de escritorio o portátil, vieja o nueva.
+
+### El diagnóstico
+El proyecto no estaba roto: se rompió el suelo bajo sus pies. `scxctl` y
+`scx_loader` salieron del paquete de planificadores (en Arch pasaron a
+`scx-tools`, y upstream a su propio repositorio `sched-ext/scx-loader`), y
+`main.py` marcaba `scxctl` como dependencia crítica. En un equipo con el kernel
+preparado y dieciséis planificadores instalados, la aplicación mostraba una
+pantalla de dependencias faltantes y salía con código 1.
+
+Además, `scx_loader` es hoy un servicio D-Bus del sistema autorizado por
+polkit. El diálogo propio que pedía la contraseña y la canalizaba a `sudo -S`
+había quedado obsoleto además de ser mala práctica.
+
+### Lo que se hizo
+- **Arranque**: sólo Linux con GTK es crítico. Todo lo demás degrada y se
+  explica en una barra de avisos dentro de la aplicación.
+- **Control**: `core/scx.py` reescrito con backends intercambiables (D-Bus,
+  scxctl, directo con systemd-run, simulado). Se eliminó
+  `widgets/password_dialog.py`.
+- **Observación**: `core/sched_ext.py` nuevo. Lee el estado real del kernel sin
+  privilegios y sin `scxctl`.
+- **Hardware**: `core/hardware.py` y `core/dimensionado.py` nuevos. Topología,
+  híbridos P/E, energía, chasis, y parámetros de prueba derivados del equipo.
+- **Térmica**: `core/thermal.py` reescrito. Umbrales derivados del Tjmax que
+  publica el hardware.
+- **Catálogo**: los 16 planificadores de scx 1.1.3, con descripciones
+  verificadas contra el `--help` de cada binario.
+- **Pruebas**: de 57 a 240.
+
+### Problemas encontrados
+1. **La lista de prioridades del sensor térmico era decorativa.** El bucle
+   recorría las zonas en orden y devolvía la primera que coincidiera con
+   *cualquier* entrada de la lista, así que ganaba `acpitz` (zona 0) teniendo
+   `x86_pkg_temp` disponible. Y el test existente afirmaba ese comportamiento
+   como correcto: codificaba el bug.
+2. **Mi propia corrección repitió el error que estaba corrigiendo.** El filtro
+   de sensores excluía por subcadena, y `"ac"` coincide dentro de
+   `"P·ac·kage id 0"`: descartaba justo el mejor sensor. Se resolvió con
+   límites de palabra. Es exactamente el fallo que tenía el parser de `lscpu`.
+3. **`lscpu` traduce sus nombres de campo.** En español devuelve "Nombre del
+   modelo" en vez de "Model name". El parser no encontraba nada y su búsqueda
+   por subcadena enganchaba campos equivocados: en francés la pestaña de
+   entorno mostraba "66 CPUs" a "66 MHz" sin dar ningún error.
+4. **Las dos vías obvias para detectar núcleos híbridos no funcionan en x86.**
+   `topology/core_type` no existe y `cpu_capacity` vale 1024 en todos los
+   núcleos. Lo que sí funciona es `/sys/devices/cpu_core/cpus` y
+   `/sys/devices/cpu_atom/cpus`, que registra el subsistema perf.
+5. **Un ratón inalámbrico se declara `type=Battery`.** Sin filtrar por `scope`,
+   un equipo de escritorio con ratón Bluetooth pasaba por portátil.
+6. **`pip install .` fallaba por completo.** Con `license` como expresión
+   PEP 639, el clasificador de licencia dejó de ser un aviso y pasó a ser un
+   error. Y `main.py` no entraba en el wheel, así que el punto de entrada
+   `reactor` se instalaba sin el módulo que importa.
+7. **Un import ausente que ninguna prueba veía.** `core/benchmark.py` usaba
+   `obtener_dimensionado()` sin importarlo. La aplicación arrancaba con
+   normalidad; habría fallado al lanzar el primer benchmark. Lo encontró `ruff`
+   con `F821`, y por eso ahora esa comprobación es una prueba más.
+
+### Aprendizajes
+- Cuando una aplicación deja de funcionar sin que nadie la toque, el sospechoso
+  es el entorno, no el código. Aquí el repositorio parecía correcto.
+- Un test puede fijar un bug en su sitio. `test_priority_zone_detection`
+  afirmaba que ganaba `acpitz` y protegía el fallo de cualquier corrección.
+- Las comparaciones por subcadena en datos del sistema son una fuente
+  reincidente de errores silenciosos: enganchan lo que no deben y fallan sin
+  avisar.
+- El análisis estático encuentra lo que las pruebas unitarias no pueden ver:
+  código que no se ejecuta durante las pruebas.
+- Nada que se pueda leer de `/sys` debería leerse de la salida de una
+  herramienta que se traduce.
+
+### Pendiente
+- El "score de potencia" no mide energía: se deriva del uso de CPU que reporta
+  stress-ng. O se renombra a lo que mide, o se implementa medición real (RAPL,
+  `power_supply`) con degradación donde no exista.
+- Las mediciones no fijan el gobernador de frecuencia. Hoy se registra en el
+  historial, pero domina el resultado por encima del propio planificador.
+- Traducciones de alemán, francés, italiano y portugués (36 de 365 cadenas).
+
+---
+
 ## 2026-07-22 — Refactor masivo y ColumnView
 
 ### Objetivo

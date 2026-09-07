@@ -3,71 +3,99 @@
 ## Project
 Reactor (Reactor Experimental Avanzado Concurrente Telúrico para Optimización de Rendimiento) — A CPU scheduler benchmarking and optimization tool for Linux with `scx` schedulers.
 
-## Hardware
-- Lenovo V15 G4 ABP, AMD Ryzen 7 7730U (16 threads), 16.80 GB RAM
+## Hardware de referencia del autor
+> Es el equipo donde se desarrolla, **no un requisito**. El proyecto apunta al
+> parque de PCs de escritorio y portátiles, viejas y nuevas.
+
+- Lenovo V15 G4 ABP, AMD Ryzen 7 7730U (16 hilos), 16.80 GB RAM
 - Solus 4.9, GNOME 50.3, kernel 7.1.3-347.current
-- No `sudo`; user runs `run0` for root operations
+- Sin `sudo`; se usa `run0` para las operaciones de root
+
+## Equipo donde se hizo la modernización de 2026
+- Acer Nitro AN17-51, Intel Core i7-13620H (**híbrido: 6 P + 4 E, 16 hilos**)
+- Arch Linux, kernel 7.2.3-zen1-2-zen, GTK 4.22.4, libadwaita 1.9.3,
+  PyGObject 3.56.3, Python 3.14.7
+- `scx-scheds 1.1.3-2` instalado; **sin `scx-tools`**, es decir sin `scxctl` ni
+  `scx_loader`. Sin `stress-ng` ni `hyperfine`. Es el caso que dejaba la
+  aplicación sin arrancar.
 
 ## Entry Point
 `main.py`
 
 ## Current State
 
-### v0.8 — Auditoría y refactorización completa
-- **4 bugs críticos corregidos**: check_same_thread, subprocess import, set_sensitive, re-entrancy guard
-- **9 bugs altos corregidos**: sensor timer, HTML release_notes, scheduler names traducidos, log tags, etc.
-- **8 bugs medios corregidos**: 4 memory leaks de timers, crosshair chart, lscpu keywords, dead code, etc.
-- **God functions refactorizadas**: iniciar_auto_test (208→18L), _refrescar_tendencia (272→12L), iniciar_verificacion (125→25L), sincronizar_sistema (41→15L)
-- **10 violaciones DRY**: ~285 líneas eliminadas (chips, dots, child-removal, logging, toasts, result dict)
-- **AppImage autocontenido**: cyclictest estático + rt-tests source bundleado, versión desde git tag
-- **57 tests** (49 + 8 nuevos para hybrid.py y calcular_score_categorias)
-- **Eliminado Nuitka** (build.sh), puro AppImage
-- **pyproject.toml**: backend build_meta, version dinámica
-- **Archivos muertos**: design/ (7 archivos) + .po~ eliminados
+### v1.1 (en curso) — Modernización al ecosistema scx 2026 y adaptación al hardware
+
+**El cambio de fondo:** `scxctl` y `scx_loader` salieron del paquete de
+planificadores. En Arch, `scx-scheds` trae los 16 planificadores y `scxtop`;
+`scxctl`, `scx_loader` y `scxtui` viven en `scx-tools`. Upstream también se
+separó: `scx_loader` es ahora el repositorio `sched-ext/scx-loader`.
+`main.py` marcaba `scxctl` como dependencia **crítica**, así que la aplicación
+hacía `sys.exit(1)` en equipos con el kernel preparado y los planificadores
+instalados. Ése es el motivo por el que el proyecto quedó pausado.
+
+**Arquitectura nueva:**
+- `core/scx.py` — backends intercambiables: `BackendDbus` (org.scx.Loader,
+  autorizado por polkit; el camino preferido), `BackendScxctl`,
+  `BackendDirecto` (systemd-run + pkexec/run0) y `BackendSimulado`.
+  Se elige el mejor disponible al arrancar. **Nunca se pide la contraseña
+  dentro de la aplicación**; `widgets/password_dialog.py` se eliminó.
+- `core/sched_ext.py` — observación de `/sys/kernel/sched_ext` sin privilegios.
+  Es la fuente de verdad sobre qué gobierna el sistema.
+- `core/hardware.py` — topología, híbridos P/E, memoria, energía, chasis,
+  virtualización. Todo de `/sys` y `/proc`, nunca de herramientas traducibles.
+- `core/dimensionado.py` — parámetros de las pruebas derivados del equipo.
+- `core/thermal.py` — reescrito: umbrales derivados del Tjmax del hardware.
+
+### Cosas que conviene no volver a romper
+
+- **Los nombres de planificador tienen dos convenciones.** El kernel publica
+  `lavd` en `root/ops`; el loader y `scxctl` usan `scx_lavd`. Todo el código
+  trabaja en forma canónica (con prefijo) y sólo la interfaz muestra la corta.
+  Usar `core.sched_ext.canonizar()` y `nombre_corto()`.
+- **Los modos son de `scx_loader`, no de los planificadores.** Los valores
+  enteros son Auto=0, Gaming=1, PowerSave=2, LowLatency=3, Server=4, y **ese
+  orden no coincide** con el que mostraba la interfaz antigua. Los modos
+  disponibles dependen del planificador y se consultan con `SchedulerModes`.
+  Sin loader sólo existe `auto`.
+- **`lscpu` traduce sus campos.** Cualquier invocación necesita `LC_ALL=C`.
+  Mejor aún: leer `/sys` a través de `core/hardware.py`.
+- **Nunca `pkill -f scx_`.** Mataba `scxtop`, `scx_loader` y cualquier proceso
+  cuyo comando contuviera esa cadena.
+- **Los umbrales térmicos no son constantes.** Salen de `temp*_crit` del
+  hardware. 60/75 °C fijos declaraban limitación térmica en portátiles con
+  Tjmax de 95-100 °C que estaban perfectamente bien.
+- **`os.cpu_count()` no sirve para dimensionar carga.** Ignora la afinidad y la
+  cuota de cgroup. Usar `perfil.hilos_para_carga`.
+- **En las pruebas de latencia, `valor` es la media en µs y menos es mejor.**
+  Cualquier fórmula de gráfico debe invertirlo: el contrato de
+  `valor_para_grafico` es "siempre una tasa, más alto es mejor".
+- **`scx_chaos` degrada el sistema a propósito** ("designed to amplify race
+  conditions"). Está excluido del ciclo automático vía `apto_para_benchmark`,
+  junto con `layered` (necesita un JSON de capas), `flow` (levanta un servidor
+  web y se autoajusta), `forge`, `mlfq` y `tickless`.
 
 ### Improvement Queue (próximas mejoras)
-1. ✅ Tests automatizados
+1. ✅ Tests automatizados (240)
 2. ✅ Split automatizacion.py
 3. ✅ Fix god-object VentanaSimple
-4. ✅ `pyproject.toml`
+4. ✅ `pyproject.toml` (ahora `pip install .` funciona de verdad)
 5. ✅ Fix duplicación y constantes
 6. ✅ Mejorar excepciones
+7. ✅ Arranque sin `scxctl`, control por D-Bus + polkit
+8. ✅ Adaptación al hardware (topología, térmica, dimensionado)
+9. ⬜ Medición de energía real (RAPL / `power_supply`) en vez del "waste"
+   derivado del uso de CPU, que no mide energía pese a llamarse "potencia"
+10. ⬜ Fijar o al menos advertir sobre el gobernador de frecuencia durante las
+    pruebas: hoy domina el resultado por encima del propio planificador
+11. ⬜ Traducciones de-fr-it-pt (36 de 365 cadenas)
 
 ### Known Issues / Limitations
-- No hay issues conocidos activos
-
-### Key Files
-- `pyproject.toml` — proyecto Python estándar (metadatos, deps, pytest/ruff config)
-- `core/constantes.py` — VERSION, umbrales térmicos, intervalos, pesos por defecto
-- `core/estado.py` — EstadoPrueba, EstadoMonitor, EstadoDeteccionAuto dataclasses
-- `core/scoring.py` — `calcular_scores_finales()`, `calcular_score_categorias()`
-- `core/benchmark.py` — benchmark con stress-ng (cpu, threads, memory)
-- `core/hybrid.py` — benchmark con hyperfine (fork, compile, loaded)
-- `core/database.py` — persistencia SQLite, compatibilidad, migraciones
-- `core/verificacion.py` — motor de verificación de sistema + AppImage
-- `ui/automatizacion/` — detección automática del mejor scheduler
-  - `__init__.py` — re-exports, configuración de pesos
-  - `deteccion.py` — loop de tests, gestión térmica, scores
-  - `pesos.py` — sliders, presets, animaciones
-  - `historial.py` — navegación de runs automáticos
-- `ui/disponibilidad.py` — verificación BPF scheduler por scheduler
-- `ui/historial/` — plantilla modular del historial
-  - `pagina.py` — setup, InLineViewSwitcher
-  - `tendencia.py` — gráfico + tabla ColumnView + chips
-  - `resultados.py` — lista de resultados con filtros
-  - `dibujo.py` — Cairo rendering, hover tooltip, crossfade
-  - `entorno.py` — info del sistema, hardware, radar lscpu
-  - `constantes.py` — tipos de prueba y rangos de fecha
-- `ui/diagnostico/` — monitoreo en vivo
-  - `pagina.py` — setup, scxtop embebido
-  - `monitoreo.py` — CPU/mem/temp/nucleos/planif/eventos
-- `widgets/radar.py` — RadarChart (Cairo) compartido
-- `widgets/legend.py` — chips de leyenda interactivos
-- `widgets/circular_meter.py` — medidor circular térmico
-- `utils/helpers.py` — logging, colores, lscpu, bundle detection, format_raw_value, dibujar_dot, vaciar_contenedor, toast
-- `utils/iconos.py` — constantes de iconos portátiles + GResource
-- `utils/i18n.py` — internacionalización gettext
-- `data/icons/reactor.gresource` — GResource compilado con SVGs bundleados
+- El "score de potencia" no mide energía: se deriva del uso de CPU que reporta
+  stress-ng. El nombre es engañoso y está pendiente de resolver (punto 9).
+- Las mediciones no fijan el gobernador de frecuencia. Se registra en el
+  historial, pero dos corridas con gobernadores distintos no son comparables.
+- Alemán, francés, italiano y portugués están al 10 % de traducción.
 
 ### Adw.AboutDialog release_notes
 **No usa Pango markup.** Usa **AppStream description standards**:

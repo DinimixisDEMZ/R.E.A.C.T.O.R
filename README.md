@@ -41,11 +41,11 @@ Provides a GTK4/Libadwaita GUI for:
 - Modern UI with GTK4 and Libadwaita.
   <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/5cbb2996-92bd-4b02-a112-72f7155bc23f" />
 
-- SCX scheduler control via `scxctl`.
+- SCX scheduler control over D-Bus (`org.scx.Loader`, authorised by polkit), with fallbacks to `scxctl` and to running the scheduler binaries directly.
   <img width="1000" height="900" alt="image" src="https://github.com/user-attachments/assets/24fe4805-bedd-441c-a952-8099bd030df7" />
 
 - **Self-contained AppImage** with hyperfine, cyclictest bundled.
-- History persistence in SQLite (`~/.local/share/scxctl/history.db`).
+- History persistence in SQLite (`~/.local/share/reactor/history.db`).
   <img width="1000" height="1057" alt="image" src="https://github.com/user-attachments/assets/479d50b5-35ef-4301-b23b-29056b28754a" />
 
 - Result comparison with adjustable weights (power, response, smoothness).
@@ -70,7 +70,7 @@ Provides a GTK4/Libadwaita GUI for:
   <img width="578" height="173" alt="image" src="https://github.com/user-attachments/assets/663b1265-6eef-44aa-ac3b-73e7f97b5876" />
 
 - Info panels for each benchmark test explaining methodology and interpretation.
-- 57 automated tests (scoring, benchmark, database, thermal, hybrid).
+- 240 automated tests (scoring, benchmark, database, thermal, hybrid, hardware, sched_ext, control backends, sizing, verification, project integrity).
   <img width="934" height="990" alt="image" src="https://github.com/user-attachments/assets/2c8845d7-c60f-4fb9-96df-a13c35cd6b46" />
 
 - Learning document with architecture patterns and best practices.
@@ -101,11 +101,28 @@ python3 main.py
 
 ### Requirements (source mode)
 
-- Linux with Python >= 3.10
-- GTK 4, Libadwaita >= 1
-- `scxctl` (from system, kernel-specific)
-- `sudo` or `run0` with active session
-- `stress-ng`, `hyperfine`, `gcc` + `make` (for compile benchmark; stress-ng needed even for AppImage)
+**Required — the app will not start without these:**
+
+- Linux with Python >= 3.11
+- GTK 4 and Libadwaita >= 1 (with their GObject Introspection data)
+
+**Optional — each one only limits a specific feature, and the app tells you
+which one at startup:**
+
+| Component | Without it |
+|---|---|
+| A kernel with `CONFIG_SCHED_CLASS_EXT` (6.12+) | No scx schedulers can be applied; measuring the system scheduler and the history still work |
+| scx schedulers (`scx-scheds` on Arch, `kernel-scx-scheds` on Fedora) | Nothing to compare |
+| `scx_loader` or `scxctl` (`scx-tools` on Arch) | Falls back to launching the scheduler binaries directly via `systemd-run` |
+| `pkexec` or `run0` | Privileged operations are unavailable |
+| `stress-ng` | The CPU, mixed-load and synchronisation benchmarks are unavailable |
+| `hyperfine` | The latency benchmarks are unavailable |
+| `gcc` + `make` | The parallel-compilation benchmark is unavailable |
+| Vte (GTK 4 build) | The embedded `scxtop` terminal is unavailable |
+
+> **Note:** `scxctl` and `scx_loader` ship in a **different package** from the
+> schedulers on most distributions, and upstream they now live in their own
+> repository (`sched-ext/scx-loader`). REACTOR does not require either of them.
 
 ### Running tests
 
@@ -119,7 +136,10 @@ pytest
 - `app.py` — main window and global application setup.
 - `pyproject.toml` — project configuration, dependencies, and tools.
 - `core/` — business logic:
-  - `scx.py` — interaction with `scxctl`.
+  - `scx.py` — scheduler control with interchangeable backends (D-Bus, `scxctl`, direct, simulated).
+  - `sched_ext.py` — read-only observation of `/sys/kernel/sched_ext`, no privileges needed.
+  - `hardware.py` — CPU topology, hybrid P/E cores, memory, power and chassis detection.
+  - `dimensionado.py` — benchmark sizing derived from the machine.
   - `benchmark.py` — benchmark execution with stress-ng.
   - `hybrid.py` — latency benchmarks with hyperfine.
   - `scoring.py` — ranking and score calculation with harmonic mean.
