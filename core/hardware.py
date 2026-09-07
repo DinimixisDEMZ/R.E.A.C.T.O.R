@@ -14,8 +14,8 @@ Reglas de diseño:
   - Cada dato tiene un origen declarado y un valor por defecto explícito.
 """
 
-import os
 import glob
+import os
 import platform
 import re
 
@@ -37,7 +37,7 @@ _CHASIS_ESCRITORIO = {3, 4, 5, 6, 7, 13, 15, 16, 24, 35}
 def leer_texto(ruta, defecto=None):
     """Lee un archivo de sysfs/procfs. Nunca lanza; devuelve `defecto` si falla."""
     try:
-        with open(ruta, "r", errors="replace") as f:
+        with open(ruta, errors="replace") as f:
             return f.read().strip()
     except (OSError, ValueError):
         return defecto

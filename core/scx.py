@@ -24,11 +24,9 @@ canalizaba la contraseña a `sudo -S` se eliminó: no era una ruta de confianza,
 `del pwd` no borraba nada, y bloqueaba la interfaz mientras `sudo` respondía.
 """
 
-import os
 import shutil
 import subprocess
 
-import gi
 from gi.repository import Gio, GLib
 
 from core import sched_ext
