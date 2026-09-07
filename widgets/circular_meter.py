@@ -10,9 +10,14 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Gdk, GLib, Adw
 
-import cairo
+try:
+    import cairo
+    _HAY_CAIRO = True
+except ImportError:  # pragma: no cover - depende del sistema
+    cairo = None
+    _HAY_CAIRO = False
 
-from core.constantes import TEMP_UMBRAL_ESTABLE, TEMP_UMBRAL_ELEVADA, INTERVALO_FRAME_MS
+from core.constantes import INTERVALO_FRAME_MS
 
 _COLOR_VERDE = (0.18, 0.76, 0.49)
 _COLOR_AMARILLO = (0.96, 0.76, 0.07)
@@ -32,10 +37,21 @@ def _color_para_fraccion(fraction):
     return _COLOR_ROJO
 
 
-def _color_para_temperatura(temp_c):
-    if temp_c < TEMP_UMBRAL_ESTABLE:
+def _color_para_temperatura(temp_c, limite=None):
+    """Color del medidor según lo cerca que esté la temperatura de su límite.
+
+    El límite lo declara el propio hardware (Tjmax). Comparar contra grados
+    fijos pintaba de rojo a un portátil que trabajaba con total normalidad: un
+    CPU con Tjmax de 100 °C a 78 °C está holgado, y uno de 85 °C no.
+    """
+    from core.thermal import FRACCION_CRITICA, FRACCION_ELEVADA, TJMAX_POR_DEFECTO
+    limite = limite or TJMAX_POR_DEFECTO
+    if limite <= 0:
         return _COLOR_VERDE
-    if temp_c < TEMP_UMBRAL_ELEVADA:
+    fraccion = temp_c / limite
+    if fraccion < FRACCION_ELEVADA:
+        return _COLOR_VERDE
+    if fraccion < FRACCION_CRITICA:
         return _COLOR_AMARILLO
     return _COLOR_ROJO
 

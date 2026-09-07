@@ -149,7 +149,14 @@ def actualizar_diagnostico_tiempo_real(win, controles):
     # 3. Temperatura
     t_temp = win.sensor.obtener_temp()
     if t_temp > 0:
-        controles["medidor_temp"].update(t_temp / 100.0, f"{t_temp:.1f} °C", color=_color_para_temperatura(t_temp))
+        # El medidor se normaliza contra el límite real del equipo, no contra
+        # 100 °C fijos: en un CPU con Tjmax de 85 °C el arco nunca llegaba al
+        # rojo aunque estuviera al borde del límite.
+        limite_termico = win.sensor.tjmax() if hasattr(win, "sensor") else 100.0
+        controles["medidor_temp"].update(
+            min(1.0, t_temp / limite_termico) if limite_termico else 0.0,
+            f"{t_temp:.1f} °C",
+            color=_color_para_temperatura(t_temp, limite_termico))
     else:
         controles["medidor_temp"].update(0.0, traducir("N/D"))
 

@@ -33,39 +33,64 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 
-_HERRAMIENTAS = [
-    ("scxctl", "scxctl", True, traducir("Gestión de planificadores SCX")),
-    ("stress-ng", "stress-ng", False, traducir("Benchmarks de estrés")),
-    ("hyperfine", "hyperfine", False, traducir("Benchmarks de precisión")),
-]
-
 _CRITICO_SIN_LINUX = traducir(
     "Sistema operativo incompatible: {}\n"
     "Esta herramienta solo funciona en Linux con soporte para SCX schedulers."
 )
 
 
-def _verificar_herramientas():
+def _verificar_entorno():
+    """Decide si la aplicación puede arrancar y con qué limitaciones.
+
+    Antes `scxctl` figuraba como dependencia crítica y su ausencia terminaba en
+    `sys.exit(1)`. Eso dejaba la aplicación inservible en cualquier distribución
+    que empaquete los planificadores por separado del loader —que son casi
+    todas— aunque el kernel tuviera sched_ext y hubiera dieciséis planificadores
+    instalados.
+
+    El único requisito real para arrancar es Linux con GTK. Todo lo demás
+    limita funciones concretas, y eso se comunica sin bloquear: una aplicación
+    que se niega a abrir no le sirve a nadie.
+    """
     criticos = []
     advertencias = []
 
     if platform.system() != "Linux":
         criticos.append(_CRITICO_SIN_LINUX.format(platform.system()))
+        return criticos, advertencias
 
-    for nombre, binario, critico, proposito in _HERRAMIENTAS:
-        if not shutil.which(binario):
-            msg = f"{nombre} no encontrado. Necesario para: {proposito}."
-            if critico:
-                criticos.append(msg)
-            else:
-                advertencias.append(msg)
+    from core import sched_ext
 
-    # Verificar run0 o sudo
-    if not shutil.which("run0") and not shutil.which("sudo"):
+    if not sched_ext.hay_soporte():
         advertencias.append(traducir(
-            "No se encontró run0 ni sudo. Las operaciones que requieran "
-            "privilegios no estarán disponibles."
-        ))
+            "Este kernel no tiene sched_ext (CONFIG_SCHED_CLASS_EXT). No se "
+            "pueden aplicar planificadores scx, pero sí medir el planificador "
+            "actual del sistema y consultar el historial."))
+    else:
+        instalados = sched_ext.schedulers_instalados()
+        if not instalados:
+            advertencias.append(traducir(
+                "El kernel soporta sched_ext pero no hay ningún planificador scx "
+                "instalado. Instalá el paquete de tu distribución (en Arch: "
+                "scx-scheds; en Fedora: kernel-scx-scheds)."))
+        elif not shutil.which("scxctl"):
+            advertencias.append(traducir(
+                "No se encontró scxctl ni el servicio scx_loader. Se usará la "
+                "ejecución directa de los planificadores. Para el control "
+                "completo instalá el paquete del loader (en Arch: scx-tools)."))
+
+    if not any(shutil.which(h) for h in ("pkexec", "run0", "sudo")):
+        advertencias.append(traducir(
+            "No se encontró pkexec, run0 ni sudo. Las operaciones que requieren "
+            "privilegios no estarán disponibles."))
+
+    for binario, proposito in (
+        ("stress-ng", traducir("Benchmarks de estrés")),
+        ("hyperfine", traducir("Benchmarks de precisión")),
+    ):
+        if not shutil.which(binario):
+            advertencias.append(
+                traducir("{} no encontrado. Necesario para: {}.").format(binario, proposito))
 
     return criticos, advertencias
 
@@ -93,15 +118,12 @@ def _verificar_importaciones():
 
 
 def main():
-    criticos, advertencias = _verificar_herramientas()
+    criticos, advertencias = _verificar_entorno()
     advertencias.extend(_verificar_importaciones())
 
     if criticos:
         _mostrar_verificacion(criticos, advertencias, bloqueante=True)
         return 1
-
-    if advertencias:
-        _mostrar_verificacion(advertencias, bloqueante=False)
 
     from app import VentanaSimple
 
@@ -116,6 +138,9 @@ def main():
             establecer_iconos_idk(True)
             win = VentanaSimple(app)
             win._usar_idk = True
+            # Las advertencias ya no abren un diálogo modal antes de arrancar:
+            # se muestran dentro de la aplicación, que sigue siendo utilizable.
+            win.mostrar_advertencias_arranque(advertencias)
             win.present()
 
     app = MiApp(application_id="com.dinimixis.reactor")

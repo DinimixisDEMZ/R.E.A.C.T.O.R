@@ -34,12 +34,13 @@ from ui.automatizacion import configurar_ui_automatizacion
 from ui.disponibilidad import configurar_ui_disponibilidad
 from ui.diagnostico import configurar_ui_diagnostico
 from ui.historial import configurar_ui_historial
-from core.constantes import VERSION, TEMP_UMBRAL_ESTABLE, TEMP_UMBRAL_ELEVADA
+from core.constantes import VERSION
 from utils.iconos import TEMPERATURA_CRITICA
 from core.estado import EstadoPrueba, EstadoMonitor, EstadoDeteccionAuto
 from core.database import inicializar_db, obtener_versiones, detectar_cambio_version, cargar_compatibilidad
-from widgets.password_dialog import DialogoPassword
 from utils.i18n import traducir
+from utils.logging import mostrar_toast, registrar_error
+from core.sched_ext import nombre_corto
 from core.verificacion import verificar_si_primera_vez, marcar_verificacion_hecha
 from ui.verificacion import mostrar_verificacion
 
@@ -51,7 +52,12 @@ class VentanaSimple(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app)
         self.set_title(traducir("R.E.A.C.T.O.R"))
-        self.set_default_size(950, 850)
+        # El tamaño por defecto debe caber en el parque real de portátiles: una
+        # ventana de 950x850 no entra en una pantalla de 1366x768, que sigue
+        # siendo la más común entre los equipos viejos. Se pide un tamaño
+        # cómodo pero se declara un mínimo que funcione en 1024x600.
+        self.set_default_size(920, 720)
+        self.set_size_request(360, 400)
 
         # Libadwaita maneja el tema
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.DEFAULT)
@@ -66,6 +72,7 @@ class VentanaSimple(Adw.ApplicationWindow):
         self.compatibles = None
         self.modo_desarrollador = False
         self.active_sc = None
+        self.advertencias_arranque = []
 
         # ── Core ──
         self.scx = GestorScx(modo_desarrollador=self.modo_desarrollador)
@@ -84,8 +91,32 @@ class VentanaSimple(Adw.ApplicationWindow):
         # ── Layout ──
         self.toast_overlay = Adw.ToastOverlay()
         self.set_content(self.toast_overlay)
+
+        # La barra de advertencias vive por encima del contenido: informa sin
+        # robar el foco ni impedir usar la aplicación.
+        self.banner_avisos = Adw.Banner(revealed=False, button_label=traducir("Ver detalles"))
+        self.banner_avisos.connect("button-clicked", lambda *_: mostrar_verificacion(self))
+
         self.split_view = Adw.NavigationSplitView()
-        self.toast_overlay.set_child(self.split_view)
+        self.split_view.set_min_sidebar_width(180)
+        self.split_view.set_max_sidebar_width(260)
+
+        caja_raiz = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        caja_raiz.append(self.banner_avisos)
+        caja_raiz.append(self.split_view)
+
+        # En pantallas angostas la barra lateral se pliega sobre el contenido en
+        # vez de comprimirlo. Sin este punto de ruptura la ventana era
+        # inutilizable por debajo de unos 700 px de ancho.
+        contenedor = Adw.BreakpointBin()
+        contenedor.set_size_request(360, 400)
+        contenedor.set_child(caja_raiz)
+        punto = Adw.Breakpoint.new(
+            Adw.BreakpointCondition.parse("max-width: 700px"))
+        punto.add_setter(self.split_view, "collapsed", True)
+        contenedor.add_breakpoint(punto)
+
+        self.toast_overlay.set_child(contenedor)
 
         # ── Páginas ──
         self.pag_controles = Adw.NavigationPage(title=traducir("Controles"), tag="page_a")
@@ -158,6 +189,17 @@ class VentanaSimple(Adw.ApplicationWindow):
             dialogo = mostrar_verificacion(self)
             dialogo.connect("closed", _al_cerrar_verificacion)
 
+    def mostrar_advertencias_arranque(self, advertencias):
+        """Muestra en la barra superior las limitaciones detectadas al arrancar."""
+        self.advertencias_arranque = list(advertencias or [])
+        if not self.advertencias_arranque:
+            return
+        cantidad = len(self.advertencias_arranque)
+        self.banner_avisos.set_title(
+            traducir("La aplicación funciona con limitaciones ({} avisos)").format(cantidad)
+            if cantidad > 1 else self.advertencias_arranque[0])
+        self.banner_avisos.set_revealed(True)
+
     def setup_sidebar(self):
         """Construye la barra lateral de navegación."""
         pag_sidebar = Adw.NavigationPage(title=traducir("R.E.A.C.T.O.R"), tag="sidebar")
@@ -220,41 +262,51 @@ class VentanaSimple(Adw.ApplicationWindow):
         GLib.timeout_add(2000, self.actualizar_sensor_termico)
 
     def actualizar_sensor_termico(self):
-        """Actualiza el indicador térmico en la sidebar."""
+        """Actualiza el indicador térmico de la barra lateral.
+
+        Se informa el margen respecto al límite que declara el propio hardware,
+        no una temperatura contra un umbral fijo: 72 °C es holgado en un CPU con
+        Tjmax de 100 °C y preocupante en uno de 85 °C. Con umbrales fijos la
+        aplicación anunciaba limitación térmica en equipos que estaban bien.
+        """
         try:
-            t = self.sensor.obtener_temp()
-        except Exception:
-            self.lbl_termica_detail.set_label(traducir("Estado: No disponible"))
+            nivel = self.sensor.nivel()
+            temperatura = self.sensor.obtener_temp()
+        except Exception as e:
+            registrar_error("actualizar_sensor_termico", e)
+            nivel, temperatura = "desconocido", 0.0
+
+        for clase in ("error", "warning", "dim-label"):
+            self.img_termica.remove_css_class(clase)
+
+        if nivel == "desconocido":
             self.img_termica.set_from_icon_name("temperature-symbolic")
             self.img_termica.add_css_class("dim-label")
-            return True
-        if t == 0:
-            self.lbl_termica_detail.set_label(traducir("Estado: No disponible"))
-            self.img_termica.set_from_icon_name("temperature-symbolic")
-            self.img_termica.add_css_class("dim-label")
+            self.btn_termica.set_tooltip_text(traducir("Sin sensor térmico disponible"))
+            self.lbl_termica_detail.set_label(traducir(
+                "Este equipo no expone la temperatura del CPU. Las pruebas se "
+                "ejecutan igual, pero no se puede descartar el efecto del calor."))
             return True
 
-        if t < TEMP_UMBRAL_ESTABLE:
+        limite = self.sensor.tjmax()
+        porcentaje = int(round(self.sensor.margen() * 100))
+        detalle = f"{temperatura:.1f} °C / {limite:.0f} °C ({porcentaje}%)"
+
+        if nivel == "estable":
             self.img_termica.set_from_icon_name("temperature-symbolic")
-            self.btn_termica.set_tooltip_text(f"{traducir('Sistema estable')} ({t:.1f}°C)")
-            self.lbl_termica_detail.set_label(f"{traducir('Estado: Estable')} ({t:.1f}°C)")
-            self.img_termica.remove_css_class("error")
-            self.img_termica.remove_css_class("warning")
             self.img_termica.add_css_class("dim-label")
-        elif t < TEMP_UMBRAL_ELEVADA:
+            self.btn_termica.set_tooltip_text(f"{traducir('Sistema estable')} — {detalle}")
+            self.lbl_termica_detail.set_label(f"{traducir('Estado: Estable')}\n{detalle}")
+        elif nivel == "elevado":
             self.img_termica.set_from_icon_name("temperature-symbolic")
-            self.btn_termica.set_tooltip_text(f"{traducir('Temperatura elevada')} ({t:.1f}°C)")
-            self.lbl_termica_detail.set_label(f"{traducir('Estado: Elevado')} ({t:.1f}°C)")
-            self.img_termica.remove_css_class("error")
             self.img_termica.add_css_class("warning")
-            self.img_termica.remove_css_class("dim-label")
+            self.btn_termica.set_tooltip_text(f"{traducir('Temperatura elevada')} — {detalle}")
+            self.lbl_termica_detail.set_label(f"{traducir('Estado: Elevado')}\n{detalle}")
         else:
             self.img_termica.set_from_icon_name(TEMPERATURA_CRITICA)
-            self.btn_termica.set_tooltip_text(f"{traducir('¡LIMITADOR TÉRMICO ACTIVO!')} ({t:.1f}°C)")
-            self.lbl_termica_detail.set_label(f"{traducir('Estado: CRÍTICO')} ({t:.1f}°C)")
             self.img_termica.add_css_class("error")
-            self.img_termica.remove_css_class("warning")
-            self.img_termica.remove_css_class("dim-label")
+            self.btn_termica.set_tooltip_text(f"{traducir('Cerca del límite térmico')} — {detalle}")
+            self.lbl_termica_detail.set_label(f"{traducir('Estado: CRÍTICO')}\n{detalle}")
         return True
 
     def mostrar_acerca_de(self, btn):
@@ -307,68 +359,109 @@ class VentanaSimple(Adw.ApplicationWindow):
         ])
         dialogo.present(self)
 
-    def _sincronizar_modelo(self, sc_name, sc_mode):
-        sc_corto = sc_name.removeprefix("scx_") if sc_name else None
-        lista_nombres = self.scx.obtener_lista()
-        if sc_corto and sc_corto not in lista_nombres:
-            lista_nombres.append(sc_corto)
-        self.modelo_schedulers.splice(0, self.modelo_schedulers.get_n_items(), lista_nombres)
-        return sc_corto, lista_nombres
+    def _sincronizar_modelo(self, sc_name):
+        """Rellena el combo de planificadores.
 
-    def _actualizar_ui_scheduler(self, sc_name, sc_mode, sc_corto, lista_nombres):
+        El modelo muestra nombres cortos (`lavd`) porque es lo legible, pero
+        todo lo demás de la aplicación trabaja con el nombre canónico
+        (`scx_lavd`). La conversión se hace acá y sólo acá: mezclar las dos
+        formas hacía que el combo nunca se sincronizara con el scheduler activo
+        y que se duplicara la entrada del que estaba corriendo.
+        """
+        canonicos = self.scx.obtener_lista(self.compatibles)
+        if sc_name and sc_name not in canonicos:
+            canonicos.append(sc_name)
+        canonicos.sort()
+        self._schedulers_canonicos = canonicos
+        lista_nombres = [nombre_corto(n) for n in canonicos]
+        self.modelo_schedulers.splice(
+            0, self.modelo_schedulers.get_n_items(), lista_nombres)
+        return canonicos
+
+    def _sincronizar_modos(self, sc_name, sc_mode):
+        """Rellena el combo de modos con los que admite el backend activo.
+
+        Los modos no son universales: pertenecen a `scx_loader` y dependen del
+        scheduler. Sin loader sólo existe el comportamiento por defecto del
+        binario, así que ofrecer cinco modos sería mentir.
+        """
+        referencia = sc_name or self.scheduler_seleccionado() or ""
+        modos = self.scx.modos_disponibles(referencia) if referencia else ["auto"]
+        modelo = self.combo_modos.get_model()
+        actuales = [modelo.get_string(i) for i in range(modelo.get_n_items())]
+        if actuales != modos:
+            modelo.splice(0, modelo.get_n_items(), modos)
+        self.combo_modos.set_sensitive(len(modos) > 1)
+        if sc_mode and sc_mode in modos:
+            self.combo_modos.set_selected(modos.index(sc_mode))
+        return modos
+
+    def _actualizar_ui_scheduler(self, sc_name, sc_mode, canonicos):
         self.boton_estado.remove_css_class("success")
         self.boton_estado.remove_css_class("destructive-action")
         if sc_name:
-            self.boton_estado.set_label(f"{sc_name} [{sc_mode}]")
+            etiqueta = nombre_corto(sc_name)
+            self.boton_estado.set_label(
+                f"{etiqueta} [{sc_mode}]" if sc_mode else etiqueta)
             self.boton_estado.add_css_class("success")
             self.active_sc = sc_name
-            for i, nombre in enumerate(lista_nombres):
-                if nombre.lower() == sc_corto.lower():
-                    self.combo_schedulers.set_selected(i)
-                    break
-            model_modos = self.combo_modos.get_model()
-            for i in range(model_modos.get_n_items()):
-                if model_modos.get_string(i).lower() == sc_mode.lower():
-                    self.combo_modos.set_selected(i)
-                    break
+            if sc_name in canonicos:
+                self.combo_schedulers.set_selected(canonicos.index(sc_name))
         else:
             self.boton_estado.set_label(traducir("Planificador del Sistema"))
             self.boton_estado.add_css_class("destructive-action")
             self.active_sc = None
 
+    def scheduler_seleccionado(self):
+        """Nombre canónico del planificador elegido en el combo, o None."""
+        indice = self.combo_schedulers.get_selected()
+        canonicos = getattr(self, "_schedulers_canonicos", [])
+        if 0 <= indice < len(canonicos):
+            return canonicos[indice]
+        return None
+
     def sincronizar_sistema(self):
+        """Refleja en la interfaz el estado real del planificador del sistema.
+
+        No cambia nada del sistema: sólo lee. El `finally` es deliberado —
+        una excepción a mitad de camino dejaba `en_sincronizacion` en True para
+        siempre, y con ese cerrojo puesto la interfaz ignoraba en silencio todos
+        los cambios posteriores del usuario.
+        """
         try:
             self.en_sincronizacion = True
             sc_name, sc_mode = self.scx.obtener_estado()
-            sc_corto, lista_nombres = self._sincronizar_modelo(sc_name, sc_mode)
-            self._actualizar_ui_scheduler(sc_name, sc_mode, sc_corto, lista_nombres)
-            self.en_sincronizacion = False
-            actualizar_interfaz_ranking(self)
-        except FileNotFoundError:
-            self.boton_estado.set_label(traducir("scxctl no encontrado"))
+            canonicos = self._sincronizar_modelo(sc_name)
+            self._sincronizar_modos(sc_name, sc_mode)
+            self._actualizar_ui_scheduler(sc_name, sc_mode, canonicos)
+        except Exception as e:
+            registrar_error("sincronizar_sistema", e)
+            self.boton_estado.set_label(traducir("Estado no disponible"))
             self.boton_estado.add_css_class("destructive-action")
+        finally:
             self.en_sincronizacion = False
-        except (subprocess.SubprocessError, OSError, ValueError) as e:
-            print(f"Error sincronizando: {e}")
-            self.en_sincronizacion = False
+        actualizar_interfaz_ranking(self)
 
-    def solicitar_sudo_si_necesario(self, callback):
-        """Solicita sudo si la sesión no está activa."""
-        if self.modo_desarrollador:
-            callback()
+    def ejecutar_accion_privilegiada(self, callback):
+        """Ejecuta una acción que requiere privilegios.
+
+        La aplicación ya no pide la contraseña: `scx_loader` está protegido por
+        polkit y `pkexec`/`run0` también, así que la autenticación la muestra el
+        agente del escritorio en el momento exacto de la operación. Pedirla
+        antes, en un diálogo propio, no era una ruta de confianza y obligaba a
+        manipular la contraseña dentro del proceso.
+
+        Si el equipo no tiene ningún backend de control, se avisa acá en vez de
+        dejar que la acción falle en silencio más adelante.
+        """
+        if self.scx.backend is None:
+            mostrar_toast(
+                self,
+                traducir("Este equipo no permite controlar planificadores. "
+                         "Revisá la verificación del sistema para ver por qué."),
+                prefijo=traducir("No disponible"))
             return
-
-        if self.scx.sudo_disponible():
-            callback()
-        else:
-            def al_validar(pwd):
-                if self.scx.validar_sudo(pwd):
-                    callback()
-                    return True
-                return False
-
-            dialog = DialogoPassword(self, al_validar)
-            dialog.present()
+        callback()
 
     def agregar_opcion(self, lista, titulo, icono, pagina):
         """Agrega una opción a la sidebar de navegación."""
