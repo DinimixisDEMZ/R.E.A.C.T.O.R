@@ -3,15 +3,52 @@ Persistencia de historial de benchmarks en SQLite.
 Almacena resultados individuales con metadata de entorno (versiones, kernel).
 """
 
+import json
+import os
 import platform
+import shutil
 import sqlite3
 import subprocess
 import time
 from pathlib import Path
 
-_DB_DIR = Path.home() / ".local" / "share" / "scxctl"
+def _directorio_datos():
+    """Directorio de datos de la aplicación, según la especificación XDG.
+
+    La aplicación se llama reactor pero guardaba su historial en
+    `~/.local/share/scxctl/`, el nombre de una herramienta ajena que ni siquiera
+    es una dependencia obligatoria. Se respeta `XDG_DATA_HOME` cuando está
+    definido, en vez de asumir `~/.local/share`.
+    """
+    base = os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")
+    return Path(base) / "reactor"
+
+
+_DB_DIR = _directorio_datos()
 _DB_PATH = _DB_DIR / "history.db"
+_DB_DIR_ANTIGUO = Path(
+    os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "scxctl"
 _db_temp = None
+
+
+def _migrar_ruta_antigua():
+    """Mueve el historial de `scxctl/` a `reactor/` la primera vez.
+
+    Se copia y no se borra el original: si algo saliera mal, el usuario no
+    pierde meses de mediciones. Sólo actúa si el destino aún no existe.
+    """
+    if _DB_PATH.exists() or not (_DB_DIR_ANTIGUO / "history.db").exists():
+        return
+    try:
+        _DB_DIR.mkdir(parents=True, exist_ok=True)
+        for nombre in ("history.db", "history.db-wal", "history.db-shm"):
+            origen = _DB_DIR_ANTIGUO / nombre
+            if origen.exists():
+                shutil.copy2(origen, _DB_DIR / nombre)
+    except OSError:
+        # Si la migración falla se sigue adelante con una base nueva: es
+        # preferible a impedir que la aplicación arranque.
+        pass
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -22,7 +59,11 @@ CREATE TABLE IF NOT EXISTS runs (
     stressng_version TEXT,
     hyperfine_version TEXT,
     run_type TEXT NOT NULL DEFAULT 'manual',
-    log TEXT DEFAULT ''
+    log TEXT DEFAULT '',
+    -- Retrato del equipo en formato JSON (CPU, núcleos, RAM, gobernador,
+    -- batería, virtualización). Sin esto es imposible saber si dos corridas
+    -- del historial son siquiera comparables, y la aplicación las mezclaba.
+    entorno TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS results (
@@ -35,6 +76,14 @@ CREATE TABLE IF NOT EXISTS results (
     p95 REAL,
     waste REAL,
     modo TEXT,
+    -- 0 cuando la herramienta no llegó a medir la latencia. Antes se guardaba
+    -- el valor centinela 1.0 y esa medición inventada terminaba usándose como
+    -- referencia para puntuar a las demás.
+    p95_valido INTEGER DEFAULT 1,
+    -- 1 si el hardware limitó por temperatura mientras se medía.
+    throttling INTEGER DEFAULT 0,
+    -- Parámetros de carga efectivos, en JSON.
+    dimensionado TEXT DEFAULT '',
     FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
 );
 
@@ -120,6 +169,7 @@ def obtener_versiones():
 
 
 def inicializar_db():
+    _migrar_ruta_antigua()
     conn = _get_conn()
     try:
         conn.executescript(_SCHEMA_SQL)
@@ -129,12 +179,21 @@ def inicializar_db():
             conn.commit()
         except sqlite3.OperationalError:
             pass
-        # Migración: agregar columna log a runs
-        try:
-            conn.execute("ALTER TABLE runs ADD COLUMN log TEXT DEFAULT ''")
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass
+        # Migraciones aditivas. Cada una se intenta por separado y se ignora
+        # si la columna ya existe: así una base vieja se pone al día sin
+        # perder una sola fila.
+        for tabla, columna, definicion in (
+            ("runs", "log", "TEXT DEFAULT ''"),
+            ("runs", "entorno", "TEXT DEFAULT ''"),
+            ("results", "p95_valido", "INTEGER DEFAULT 1"),
+            ("results", "throttling", "INTEGER DEFAULT 0"),
+            ("results", "dimensionado", "TEXT DEFAULT ''"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
         sembrar_info_schedulers()
     finally:
         _close_conn(conn)
@@ -143,11 +202,18 @@ def inicializar_db():
 def guardar_run(versiones, run_type="manual", log=None):
     conn = _get_conn()
     try:
+        try:
+            from core.hardware import obtener_perfil
+            perfil = obtener_perfil()
+            perfil.refrescar_volatiles()
+            entorno = json.dumps(perfil.como_diccionario(), ensure_ascii=False)
+        except Exception:
+            entorno = ""
         cur = conn.execute(
-            "INSERT INTO runs (timestamp, kernel_version, scxctl_version, stressng_version, hyperfine_version, run_type, log) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO runs (timestamp, kernel_version, scxctl_version, stressng_version, hyperfine_version, run_type, log, entorno) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (time.time(), versiones.get("kernel", ""), versiones.get("scxctl"),
-             versiones.get("stressng"), versiones.get("hyperfine"), run_type, log or "")
+             versiones.get("stressng"), versiones.get("hyperfine"), run_type, log or "", entorno)
         )
         run_id = cur.lastrowid
         conn.commit()
@@ -156,15 +222,32 @@ def guardar_run(versiones, run_type="manual", log=None):
         _close_conn(conn)
 
 
+def _fila_resultado(run_id, result):
+    """Convierte un resultado de benchmark en la fila que espera `results`."""
+    dimensionado = result.get("dimensionado")
+    return (
+        run_id,
+        result.get("timestamp", time.time()),
+        result.get("sched", result.get("scheduler_name", "")),
+        result.get("tipo", result.get("test_type", "")),
+        result.get("valor", 0),
+        result.get("p95"),
+        result.get("waste"),
+        result.get("modo"),
+        1 if result.get("p95_valido", True) else 0,
+        1 if result.get("throttling") else 0,
+        json.dumps(dimensionado, ensure_ascii=False) if dimensionado else "",
+    )
+
+
 def guardar_resultado(run_id, result):
     conn = _get_conn()
     try:
         conn.execute(
-            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, waste, modo) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-             (run_id, result.get("timestamp", time.time()), result.get("sched", result.get("scheduler_name", "")),
-              result.get("tipo", result.get("test_type", "")), result.get("valor", 0), result.get("p95"),
-              result.get("waste"), result.get("modo"))
+            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, waste, modo, "
+            "p95_valido, throttling, dimensionado) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            _fila_resultado(run_id, result)
         )
         conn.commit()
     finally:
@@ -175,11 +258,10 @@ def guardar_resultados_batch(run_id, results):
     conn = _get_conn()
     try:
         conn.executemany(
-            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, waste, modo) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [(run_id, r.get("timestamp", time.time()), r.get("sched", r.get("scheduler_name", "")),
-              r.get("tipo", r.get("test_type", "")), r.get("valor", 0), r.get("p95"),
-              r.get("waste"), r.get("modo")) for r in results]
+            "INSERT INTO results (run_id, timestamp, scheduler_name, test_type, valor, p95, waste, modo, "
+            "p95_valido, throttling, dimensionado) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [_fila_resultado(run_id, r) for r in results]
         )
         conn.commit()
     finally:

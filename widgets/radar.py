@@ -57,6 +57,16 @@ class RadarChart(Gtk.DrawingArea):
         ev_motion.connect("leave", self._on_leave)
         self.add_controller(ev_motion)
 
+        # El pulso sólo corre mientras el widget está en pantalla. Antes el
+        # temporizador de 30 fps arrancaba con la primera animación y seguía
+        # disparándose durante toda la vida del proceso: comprobaba
+        # `get_visible()` para no redibujar, pero el temporizador en sí nunca se
+        # retiraba. En un portátil eso es consumo de batería a cambio de nada, y
+        # además la referencia a `self` impedía liberar el widget.
+        self.connect("map", lambda *_: self._reanudar_pulso())
+        self.connect("unmap", lambda *_: self._detener_animaciones())
+        self.connect("destroy", lambda *_: self._detener_animaciones())
+
     def _on_motion(self, controller, x, y):
         n = self._num_axes
         if n < 3 or self._progress < 0.5 or self._mode != "radar":
@@ -145,6 +155,14 @@ class RadarChart(Gtk.DrawingArea):
             self._pulse_id = None
         if self._anim_id:
             GLib.source_remove(self._anim_id)
+            self._anim_id = None
+
+        if not self._animaciones_activas():
+            # Sin animación se dibuja directamente el estado final.
+            self._progress = 1.0
+            self._trans_alpha = 1.0
+            self.queue_draw()
+            return
         self._anim_id = GLib.timeout_add(14, self._tick_entry)
 
     def _tick_entry(self) -> bool:
@@ -153,15 +171,44 @@ class RadarChart(Gtk.DrawingArea):
         self.queue_draw()
         if self._progress >= 1.0:
             self._anim_id = None
-            self._pulse_id = GLib.timeout_add(33, self._tick_pulse)
+            if self.get_mapped():
+                self._pulse_id = GLib.timeout_add(33, self._tick_pulse)
             return False
         return True
 
     def _tick_pulse(self) -> bool:
-        if self.get_visible():
-            self._pulse_t = (self._pulse_t + self._PULSE_SPEED) % 1.0
-            self.queue_draw()
+        if not self.get_mapped():
+            self._pulse_id = None
+            return False
+        self._pulse_t = (self._pulse_t + self._PULSE_SPEED) % 1.0
+        self.queue_draw()
         return True
+
+    # ── ciclo de vida de las animaciones ──
+
+    def _animaciones_activas(self) -> bool:
+        """Respeta la preferencia del sistema de reducir el movimiento.
+
+        Es tanto una cuestión de accesibilidad como de rendimiento: en equipos
+        sin aceleración gráfica el redibujo continuo del radar se nota.
+        """
+        ajustes = Gtk.Settings.get_default()
+        if ajustes is None:
+            return True
+        return ajustes.get_property("gtk-enable-animations")
+
+    def _reanudar_pulso(self):
+        if self._pulse_id or self._anim_id or not self._animaciones_activas():
+            return
+        if self._progress >= 1.0 and self._values:
+            self._pulse_id = GLib.timeout_add(33, self._tick_pulse)
+
+    def _detener_animaciones(self):
+        for atributo in ("_pulse_id", "_anim_id"):
+            identificador = getattr(self, atributo, None)
+            if identificador:
+                GLib.source_remove(identificador)
+                setattr(self, atributo, None)
 
     @staticmethod
     def _ease(t: float) -> float:

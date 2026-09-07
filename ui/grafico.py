@@ -58,8 +58,29 @@ class GraficoComparativo(Gtk.DrawingArea):
         self._pulse_adj = Gtk.Adjustment(lower=0.0, upper=1.0, step_increment=0.001, value=0.0)
         self._pulse_adj.connect("value-changed", lambda a: self.queue_draw())
 
-        self._tick_source = GLib.timeout_add(INTERVALO_FRAME_MS, self.tick)
-        self.connect("destroy", lambda w: GLib.source_remove(self._tick_source))
+        # El temporizador se enciende sólo cuando hay algo que animar y se
+        # apaga en cuanto todo llega a su sitio. Antes latía a 60 fps durante
+        # toda la sesión, incluso con el gráfico fuera de pantalla y sin ningún
+        # dato que mover: en un portátil eso es batería tirada.
+        self._tick_source = None
+        self.connect("map", lambda *_: self._asegurar_tick())
+        self.connect("unmap", lambda *_: self._detener_tick())
+        self.connect("destroy", lambda *_: self._detener_tick())
+
+    def _animaciones_activas(self):
+        """Respeta la preferencia del sistema de reducir el movimiento."""
+        ajustes = Gtk.Settings.get_default()
+        return True if ajustes is None else ajustes.get_property("gtk-enable-animations")
+
+    def _asegurar_tick(self):
+        """Enciende el temporizador de animación si no está corriendo."""
+        if self._tick_source is None and self.get_mapped():
+            self._tick_source = GLib.timeout_add(INTERVALO_FRAME_MS, self.tick)
+
+    def _detener_tick(self):
+        if self._tick_source is not None:
+            GLib.source_remove(self._tick_source)
+            self._tick_source = None
 
     def registrar_scheduler(self, name):
         if name not in self.datos_raw:
@@ -69,16 +90,27 @@ class GraficoComparativo(Gtk.DrawingArea):
             low = name.lower()
             if low not in self.colores:
                 self.colores[low] = generar_color_hash(name)
+            self._asegurar_tick()
 
     def actualizar_dato(self, sched, cat_idx, val_raw):
         if sched in self.datos_raw:
             self.datos_raw[sched][cat_idx] = val_raw
             if val_raw > self.max_por_categoria[cat_idx]:
                 self.max_por_categoria[cat_idx] = val_raw
+            if not self._animaciones_activas():
+                # Sin animación se salta directamente al valor final.
+                self.valores_animados[sched][cat_idx] = val_raw
+                self.queue_draw()
+                return
+            self._asegurar_tick()
 
     def tick(self):
+        if not self.get_mapped():
+            self._tick_source = None
+            return False
         if not self.datos_raw:
-            return True
+            self._tick_source = None
+            return False
 
         cambio = False
 
@@ -127,7 +159,12 @@ class GraficoComparativo(Gtk.DrawingArea):
         if cambio:
             self.anim_tick += 1
             self.queue_draw()
-        return True
+            return True
+
+        # Todo llegó a su destino: el temporizador se apaga hasta que algo
+        # vuelva a moverlo.
+        self._tick_source = None
+        return False
 
     def _get_fg(self):
         accent = obtener_color_tema("accent_color")
@@ -139,6 +176,7 @@ class GraficoComparativo(Gtk.DrawingArea):
     def iniciar_pulso(self):
         self._pulse_active = True
         self._pulse_adj.set_value(0.0)
+        self._asegurar_tick()
 
     def detener_pulso(self):
         self._pulse_active = False
@@ -174,6 +212,8 @@ class GraficoComparativo(Gtk.DrawingArea):
         if nuevo_sc != self.highlight_sc or nuevo_cat != self.highlight_cat:
             self.highlight_sc = nuevo_sc
             self.highlight_cat = nuevo_cat
+            # El resalte se anima, así que hay que despertar el temporizador.
+            self._asegurar_tick()
             self.queue_draw()
 
     def on_mouse_leave(self, controller):
@@ -182,6 +222,7 @@ class GraficoComparativo(Gtk.DrawingArea):
             self.highlight_cat = -1
             self._hover_x = 0.0
             self._hover_y = 0.0
+            self._asegurar_tick()
             self.queue_draw()
 
     def _dibujar_tooltip(self, cr, w, h, tr, tg, tb, ta):

@@ -13,7 +13,6 @@ from typing import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from utils.helpers import RE_JSON_ARRAY
 
 
 @dataclass
@@ -59,7 +58,7 @@ def _check_binario(nombre_bin: str, nombre_mostrar: str = "") -> Resultado:
     if ruta:
         return Resultado(True, f"{ruta}")
     return Resultado(False, "No encontrado en el sistema",
-                     sugerencia=f"Instalá {nombre_bin} con tu gestor de paquetes (ej: 'sudo eopkg install {nombre_bin}')")
+                     sugerencia=_sugerir_instalacion(nombre_bin))
 
 
 def _check_version(nombre_bin: str, args: list[str] | None = None) -> Resultado:
@@ -104,54 +103,191 @@ def _check_comando(cmd: list[str], parser: Callable | None = None, desc: str = "
         return Resultado(False, str(e))
 
 
-def _parse_scxctl_list(salida: str) -> bool:
-    m = RE_JSON_ARRAY.search(salida)
-    if not m:
-        return False
+def _detectar_distribucion() -> str:
+    """Identificador de la distribución, para dar una sugerencia útil de instalación."""
+    datos = {}
     try:
-        datos = json.loads(m.group())
-        return isinstance(datos, list) and len(datos) > 0 and all(isinstance(x, str) for x in datos)
-    except (json.JSONDecodeError, TypeError):
-        return False
+        with open("/etc/os-release", errors="replace") as f:
+            for linea in f:
+                if "=" in linea:
+                    clave, valor = linea.split("=", 1)
+                    datos[clave.strip()] = valor.strip().strip('"')
+    except OSError:
+        return ""
+    return (datos.get("ID") or "").lower()
 
 
-def _parse_scxctl_get(salida: str) -> bool:
-    return len(salida.strip()) > 0
+#: Cómo se instala cada cosa en cada distribución. Antes se sugería siempre
+#: `sudo eopkg install`, que sólo funciona en Solus — la distribución del autor.
+#: Nótese que `scxctl` y `scx_loader` viajan en un paquete distinto al de los
+#: planificadores en casi todas, y que en varias directamente no se empaquetan.
+_PAQUETES = {
+    "arch":         {"gestor": "sudo pacman -S {}", "scx": "scx-scheds", "loader": "scx-tools"},
+    "endeavouros":  {"gestor": "sudo pacman -S {}", "scx": "scx-scheds", "loader": "scx-tools"},
+    "cachyos":      {"gestor": "sudo pacman -S {}", "scx": "scx-scheds", "loader": "scx-scheds"},
+    "manjaro":      {"gestor": "sudo pacman -S {}", "scx": "scx-scheds", "loader": "scx-tools"},
+    "fedora":       {"gestor": "sudo dnf install {}", "scx": "kernel-scx-scheds", "loader": None},
+    "solus":        {"gestor": "sudo eopkg install {}", "scx": "scx-scheds", "loader": "scx-scheds"},
+    "opensuse-tumbleweed": {"gestor": "sudo zypper install {}", "scx": "scx-scheds", "loader": None},
+    "ubuntu":       {"gestor": "sudo apt install {}", "scx": "scx", "loader": None},
+    "debian":       {"gestor": "sudo apt install {}", "scx": "scx", "loader": None},
+    "gentoo":       {"gestor": "sudo emerge {}", "scx": "sys-kernel/scx", "loader": "sys-kernel/scx"},
+    "nixos":        {"gestor": "nix-env -iA nixpkgs.{}", "scx": "scx", "loader": "scx"},
+}
 
 
-def _check_sudo() -> Resultado:
-    ruta_sudo = shutil.which("sudo")
-    ruta_run0 = shutil.which("run0")
-    if not ruta_sudo and not ruta_run0:
-        return Resultado(False, "No disponible (se requiere sudo o run0)")
-    if ruta_sudo:
-        try:
-            r = subprocess.run(["sudo", "-n", "true"], capture_output=True, timeout=5)
-            if r.returncode == 0:
-                return Resultado(True, "sudo — sesión activa")
-            return Resultado(True, "sudo — disponible (requiere autenticación)")
-        except subprocess.TimeoutExpired:
-            return Resultado(False, "sudo — tiempo de espera agotado")
-    return Resultado(True, "run0 — disponible")
+def _receta_distribucion() -> dict:
+    return _PAQUETES.get(_detectar_distribucion(), {})
 
 
-def _check_sched_ext_sysfs() -> Resultado:
-    ruta = Path("/sys/fs/sched_ext")
-    if ruta.is_dir():
-        return Resultado(True, "/sys/fs/sched_ext existe")
-    root = Path("/sys/kernel/sched_ext")
-    if root.is_dir():
-        return Resultado(True, "/sys/kernel/sched_ext existe")
-    return Resultado(False, "No se encontró soporte sched_ext en sysfs",
-                     sugerencia="Asegurate de usar un kernel con CONFIG_SCHED_CLASS_EXT activado")
+def _sugerir_instalacion(binario: str) -> str:
+    """Sugerencia de instalación adaptada a la distribución en uso."""
+    receta = _receta_distribucion()
+    if not receta:
+        return f"Instalá {binario} con el gestor de paquetes de tu distribución."
+    return f"Instalá {binario}: {receta['gestor'].format(binario)}"
+
+
+# ─── Chequeos del entorno sched_ext ───
+
+
+def _check_sched_ext() -> Resultado:
+    """El único requisito de kernel real: CONFIG_SCHED_CLASS_EXT.
+
+    Se comprueba leyendo sysfs, no preguntándole a `scxctl`: el binario puede
+    faltar en un equipo perfectamente capaz, y su presencia tampoco garantiza
+    que se pueda controlar nada.
+    """
+    from core import sched_ext
+    if not sched_ext.hay_soporte():
+        return Resultado(
+            False, "El kernel no expone /sys/kernel/sched_ext",
+            detalles="La aplicación funciona igual, pero no puede aplicar planificadores scx.",
+            sugerencia="Necesitás un kernel compilado con CONFIG_SCHED_CLASS_EXT=y "
+                       "(6.12 o posterior). En Arch sirven linux-cachyos o linux-zen.")
+    info = sched_ext.estado()
+    detalle = f"estado: {info['estado']}"
+    if info["scheduler"]:
+        detalle += f" — activo: {info['scheduler']}"
+        if info["parcial"]:
+            detalle += " (modo parcial)"
+    return Resultado(True, "/sys/kernel/sched_ext disponible", detalles=detalle)
+
+
+def _check_schedulers_instalados() -> Resultado:
+    from core import sched_ext
+    instalados = sched_ext.schedulers_instalados()
+    if not instalados:
+        receta = _receta_distribucion()
+        return Resultado(
+            False, "No se encontró ningún planificador scx en el PATH",
+            sugerencia=_sugerir_instalacion(receta.get("scx") or "scx-scheds"))
+    nombres = ", ".join(sorted(n.removeprefix("scx_") for n in instalados))
+    return Resultado(True, f"{len(instalados)} planificadores encontrados", detalles=nombres)
+
+
+def _check_servicio_loader() -> Resultado:
+    """Estado del servicio D-Bus que gestiona los planificadores.
+
+    No es crítico: sin él se usa la ejecución directa. Pero distinguir entre
+    "no está instalado", "está y se activa solo" y "está corriendo" cambia por
+    completo qué conviene sugerirle al usuario.
+    """
+    from core.scx import BackendDbus
+    estado_servicio = BackendDbus.estado_del_servicio()
+    if estado_servicio == "activo":
+        return Resultado(True, "org.scx.Loader activo en el bus del sistema")
+    if estado_servicio == "activable":
+        return Resultado(True, "org.scx.Loader instalado (se activa bajo demanda)")
+    receta = _receta_distribucion()
+    paquete = receta.get("loader")
+    if paquete and receta.get("gestor"):
+        sugerencia = f"Para el control completo instalá el loader: {receta['gestor'].format(paquete)}"
+    else:
+        sugerencia = ("Tu distribución no empaqueta scx_loader. Se usará la "
+                      "ejecución directa de los binarios.")
+    return Resultado(False, "scx_loader no está disponible",
+                     detalles="Se usará la ejecución directa de los planificadores.",
+                     sugerencia=sugerencia)
+
+
+def _check_backend_control() -> Resultado:
+    """¿Puede la aplicación aplicar un planificador en este equipo?"""
+    from core.scx import GestorScx
+    gestor = GestorScx()
+    if gestor.backend is None:
+        return Resultado(
+            False, "No hay ningún backend de control disponible",
+            detalles="Se pueden ejecutar mediciones y consultar el historial, "
+                     "pero no cambiar el planificador.",
+            sugerencia="Instalá scx_loader, o asegurate de tener pkexec o run0.")
+    etiquetas = {
+        "dbus": "D-Bus (scx_loader), autorizado por polkit",
+        "scxctl": "binario scxctl",
+        "directo": "ejecución directa con systemd-run",
+        "simulado": "modo simulación",
+    }
+    return Resultado(True, etiquetas.get(gestor.nombre_backend, gestor.nombre_backend),
+                     detalles="operaciones: " + ", ".join(sorted(gestor.backend.capacidades)))
+
+
+def _check_privilegios() -> Resultado:
+    """Cómo se elevan privilegios en este equipo.
+
+    La aplicación ya no pide la contraseña: la solicita el agente del escritorio
+    a través de polkit, en el momento exacto de la operación.
+    """
+    disponibles = [h for h in ("pkexec", "run0") if shutil.which(h)]
+    if disponibles:
+        return Resultado(True, " y ".join(disponibles) + " disponibles",
+                         detalles="La autenticación la muestra el agente polkit del escritorio.")
+    if shutil.which("sudo"):
+        return Resultado(True, "sólo sudo",
+                         detalles="Se usa únicamente si ya hay una sesión activa; "
+                                  "la aplicación nunca pide la contraseña.",
+                         sugerencia="Instalá polkit (pkexec) para el flujo habitual del escritorio.")
+    return Resultado(False, "No hay forma de elevar privilegios",
+                     sugerencia="Instalá polkit (pkexec), o usá un sistema con systemd (run0).")
 
 
 def _check_scxctl() -> Resultado:
-    """scxctl siempre se verifica en el sistema (no se bundlea)."""
+    """`scxctl` ya no es obligatorio: es un cliente más del loader.
+
+    Viaja en un paquete distinto al de los planificadores en casi todas las
+    distribuciones, y su ausencia no impide observar ni controlar nada.
+    """
     ruta = shutil.which("scxctl")
     if ruta:
-        return Resultado(True, f"{ruta}")
-    return Resultado(False, "No encontrado en el sistema (scxctl es requerido)")
+        return Resultado(True, ruta)
+    return Resultado(False, "No instalado",
+                     detalles="No hace falta: la aplicación habla con el loader por "
+                              "D-Bus, o ejecuta los binarios directamente.")
+
+
+def _check_sensor_termico() -> Resultado:
+    from core.thermal import SensorTermico
+    sensor = SensorTermico()
+    if not sensor.hay_sensor():
+        return Resultado(False, "No se encontró un sensor de temperatura del CPU",
+                         detalles="Las mediciones se ejecutan igual, pero no se puede "
+                                  "descartar la influencia del calor en los resultados.")
+    return Resultado(True, f"{sensor.nombre_sensor} — {sensor.obtener_temp():.1f} °C",
+                     detalles=f"límite declarado por el hardware: {sensor.tjmax():.0f} °C")
+
+
+def _check_hardware() -> Resultado:
+    from core.hardware import obtener_perfil
+    perfil = obtener_perfil()
+    detalles = [f"tipo: {perfil.tipo_equipo}",
+                f"gobernador: {perfil.energia.get('governor')}",
+                f"driver: {perfil.energia.get('driver')}"]
+    if perfil.es_hibrida:
+        detalles.append(f"híbrida: {perfil.nucleos_rendimiento}P + {perfil.nucleos_eficiencia}E")
+    if perfil.es_virtual:
+        detalles.append(f"virtualización: {perfil.virtualizacion}")
+    if perfil.energia.get("en_bateria"):
+        detalles.append("funcionando con batería")
+    return Resultado(True, perfil.descripcion_corta(), detalles=" · ".join(detalles))
 
 
 def _check_sistema(nombre_bin: str) -> Resultado:
@@ -160,7 +296,7 @@ def _check_sistema(nombre_bin: str) -> Resultado:
     if ruta:
         return Resultado(True, f"{ruta}")
     return Resultado(False, "No encontrado en el sistema",
-                     sugerencia=f"Instalá {nombre_bin} con tu gestor de paquetes")
+                     sugerencia=_sugerir_instalacion(nombre_bin))
 
 
 def _check_rt_tests() -> Resultado:
@@ -190,14 +326,44 @@ def _check_gresource() -> Resultado:
 
 
 def _check_dependencias_python() -> Resultado:
-    modulos = [
-        "gi", "gi.repository.Gtk", "gi.repository.Adw", "gi.repository.GLib",
-        "gi.repository.Gio", "gi.repository.Gdk", "gi.repository.cairo",
-    ]
-    fallos = [m for m in modulos if m not in sys.modules]
-    if fallos:
-        return Resultado(False, f"Faltan: {', '.join(fallos)}")
-    return Resultado(True, f"{len(modulos)} módulos OK")
+    """Comprueba que las librerías gráficas estén realmente disponibles.
+
+    Antes se miraba si los módulos figuraban en `sys.modules`, lo que daba un
+    falso negativo en cuanto se ejecutaba la verificación fuera de la interfaz
+    y un falso positivo para lo que aún no se hubiera importado. Ahora se
+    intenta importar de verdad, que es la única comprobación que significa algo.
+    """
+    faltantes = []
+    detalles = []
+    try:
+        import gi
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Adw", "1")
+        from gi.repository import Adw, Gdk, Gio, GLib, Gtk
+        detalles.append(f"GTK {Gtk.MAJOR_VERSION}.{Gtk.MINOR_VERSION}.{Gtk.MICRO_VERSION}")
+        detalles.append(f"Libadwaita {Adw.MAJOR_VERSION}.{Adw.MINOR_VERSION}.{Adw.MICRO_VERSION}")
+    except (ImportError, ValueError) as e:
+        faltantes.append(f"GTK4/Libadwaita ({e})")
+
+    # Opcionales: limitan una función concreta, no impiden usar la aplicación.
+    opcionales = []
+    try:
+        import cairo  # noqa: F401
+    except ImportError:
+        opcionales.append("cairo (sin gráficos radar ni medidores)")
+    try:
+        import gi
+        gi.require_version("Vte", "3.91")
+        from gi.repository import Vte  # noqa: F401
+    except (ImportError, ValueError):
+        opcionales.append("Vte (sin terminal scxtop embebida)")
+
+    if faltantes:
+        return Resultado(False, "Faltan: " + ", ".join(faltantes),
+                         sugerencia="Instalá python-gobject, gtk4 y libadwaita.")
+    if opcionales:
+        detalles.append("opcionales ausentes: " + ", ".join(opcionales))
+    return Resultado(True, " · ".join(detalles[:2]), detalles=" · ".join(detalles[2:]))
 
 
 def _check_appimage_integridad() -> Resultado:
@@ -220,18 +386,28 @@ def _check_appimage_integridad() -> Resultado:
 # ─── Registro maestro ───
 
 VERIFICACIONES: list[Verificacion] = [
-    # ── Críticos (siempre sistema) ──
-    Verificacion("scxctl_bin", "scxctl instalado", _check_scxctl, critico=True),
-    Verificacion("scxctl_list", "scxctl list (formato JSON)", lambda: _check_comando(["scxctl", "list"], parser=_parse_scxctl_list), critico=True),
-    Verificacion("scxctl_get", "scxctl get (parseable)", lambda: _check_comando(["scxctl", "get"], parser=_parse_scxctl_get), critico=True),
-    Verificacion("scxctl_version", "Versión de scxctl", lambda: _check_version("scxctl", ["--version"]), critico=False),
-    Verificacion("sched_ext", "Soporte sched_ext en kernel", _check_sched_ext_sysfs, critico=True),
+    # Sólo dos cosas son realmente críticas: que el kernel tenga sched_ext y que
+    # GTK esté cargado. Todo lo demás limita funciones concretas y se informa
+    # sin bloquear. Antes había tres chequeos de `scxctl` marcados como críticos,
+    # y bastaba con que faltara ese binario —que ni siquiera es necesario— para
+    # que el diálogo deshabilitara el botón de continuar.
+    Verificacion("sched_ext", "Soporte sched_ext en el kernel", _check_sched_ext, critico=True),
     Verificacion("python_deps", "Dependencias Python", _check_dependencias_python, critico=True),
+
+    # Entorno de control, en cascada de degradación.
+    Verificacion("schedulers", "Planificadores scx instalados", _check_schedulers_instalados, critico=False),
+    Verificacion("loader", "Servicio scx_loader", _check_servicio_loader, critico=False),
+    Verificacion("backend", "Backend de control activo", _check_backend_control, critico=False),
+    Verificacion("privilegios", "Elevación de privilegios", _check_privilegios, critico=False),
+    Verificacion("scxctl", "Cliente scxctl (opcional)", _check_scxctl, critico=False),
+
+    # Entorno del equipo.
+    Verificacion("hardware", "Hardware detectado", _check_hardware, critico=False),
+    Verificacion("sensor_termico", "Sensor térmico", _check_sensor_termico, critico=False),
     Verificacion("gresource", "Iconos empaquetados (GResource)", _check_gresource, critico=False),
-    Verificacion("sudo_session", "Acceso a sudo", _check_sudo, critico=False),
 ]
 
-# ── Chequeos específicos de herramientas (modo-aware) ──
+# ── Herramientas de medición: opcionales, cada una limita una prueba ──
 _VERIFICACIONES_HERRAMIENTAS: list[Verificacion] = [
     Verificacion("stressng_bin", "stress-ng instalado", lambda: _check_sistema("stress-ng"), critico=False),
     Verificacion("stressng_version", "Versión de stress-ng", lambda: _check_version("stress-ng", ["--version"]), critico=False),
@@ -240,10 +416,11 @@ _VERIFICACIONES_HERRAMIENTAS: list[Verificacion] = [
     Verificacion("rt_tests", "rt-tests (benchmark de compilación)", _check_rt_tests, critico=False),
 ]
 
-# ── Autodiagnóstico AppImage (solo en modo bundle) ──
+# ── Autodiagnóstico del AppImage (sólo dentro del bundle) ──
 if _modo_appimage():
     VERIFICACIONES.append(
-        Verificacion("appimage_integridad", "Integridad del AppImage", _check_appimage_integridad, critico=True)
+        Verificacion("appimage_integridad", "Integridad del AppImage",
+                     _check_appimage_integridad, critico=True)
     )
 
 VERIFICACIONES.extend(_VERIFICACIONES_HERRAMIENTAS)

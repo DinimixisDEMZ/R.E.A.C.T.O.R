@@ -153,9 +153,26 @@ class TestCalcularValorGrafico:
         res = {"valor": 12000, "p95": 3.0}
         assert valor_para_grafico(res, "memory") == 4000.0
 
-    def test_fork_type(self):
-        res = {"p95": 2.0}
+    def test_latencia_usa_la_media_no_la_desviacion(self):
+        # En las pruebas de latencia `valor` es la media en µs y `p95` la
+        # desviación estándar. La fórmula debe mirar la media.
+        res = {"valor": 2.0, "mean_us": 2.0, "p95": 99.0}
         assert valor_para_grafico(res, "fork") == 500.0
+
+    def test_latencia_mas_baja_puntua_mas_alto(self):
+        """Regresión: el planificador más lento salía con la barra más alta.
+
+        `valor / p95` devolvía media dividida por desviación, así que subir la
+        latencia subía la puntuación. Toda comparación de latencia quedaba
+        invertida en el gráfico.
+        """
+        rapido = {"valor": 100.0, "mean_us": 100.0, "p95": 10.0}
+        lento = {"valor": 1000.0, "mean_us": 1000.0, "p95": 10.0}
+        for tipo in ("fork", "compile", "loaded", "latencia_compile"):
+            assert valor_para_grafico(rapido, tipo) > valor_para_grafico(lento, tipo), tipo
+
+    def test_latencia_invalida_no_rompe(self):
+        assert valor_para_grafico({"valor": 0}, "compile") == 0.0
 
     def test_unknown_type_returns_valor(self):
         res = {"valor": 42}

@@ -76,40 +76,65 @@ TIPOS_CPU: tuple[str, ...] = tuple(t.clave for t in TIPOS if not t.es_latencia)
 
 
 def valor_para_grafico(res: dict, tipo: str) -> float:
+    """Valor comparable de un resultado, para las barras y el radar.
+
+    Contrato: **siempre una tasa, donde más alto es mejor**. Sin esa regla las
+    barras dejan de significar lo mismo entre categorías y el gráfico miente.
+
+    Aquí había un error de inversión: en las pruebas de latencia el resultado
+    guarda `valor` = media en µs (más bajo es mejor) y `p95` = desviación
+    estándar. La fórmula anterior devolvía `valor / p95` para "compile" y
+    "loaded", es decir media dividida por desviación, así que **el planificador
+    más lento salía con la barra más alta**. Y para "fork" usaba `1000 / p95`,
+    que premiaba la baja variabilidad e ignoraba por completo la latencia real.
+    """
     t = _POR_CLAVE.get(tipo)
     if t is None:
         return res.get("valor", 0)
+
     if t.clave == "cpu":
-        return 1000.0 / max(0.01, res.get("p95", 0))
+        # p95 = µs por cambio de contexto → cambios por milisegundo.
+        return 1000.0 / max(0.01, res.get("p95") or 0.01)
+
     if t.clave == "threads":
+        # Operaciones por segundo repartidas entre los núcleos que las hicieron,
+        # para que un equipo de 16 hilos no aplaste a uno de 4 en la escala.
         ops = res.get("ops_real") or res.get("valor") or 0
-        cores = max(1, res.get("cores") or 1)
-        return ops / cores
+        nucleos = max(1, res.get("cores") or 1)
+        return ops / nucleos
+
     if t.clave == "memory":
+        # Operaciones por segundo penalizadas por la latencia del mutex.
         ops = res.get("ops_real") or res.get("valor") or 0
         p95 = max(0.1, res.get("p95") or 1.0)
         return ops / p95
-    # híbridos: fork, compile, loaded
-    if t.es_hibrido:
-        if t.clave in ("latencia_fork",):
-            return 1000.0 / max(0.01, res.get("p95", 0))
-        # compile, loaded
-        ops = res.get("valor") or 0
-        p95 = max(0.1, res.get("p95") or 1.0)
-        return ops / p95
+
+    if t.es_latencia:
+        # `valor` es la media en µs y menos es mejor: se invierte para obtener
+        # una tasa (operaciones por milisegundo) comparable con el resto.
+        media_us = res.get("mean_us") or res.get("valor") or 0
+        if media_us <= 0:
+            return 0.0
+        return 1000.0 / media_us
+
     return res.get("valor", 0)
 
 
 def valor_para_ranking(res: dict, tipo: str) -> float:
+    """Valor crudo de un resultado, para la tabla técnica.
+
+    A diferencia de `valor_para_grafico`, aquí **no** se normaliza el sentido:
+    se devuelve la magnitud medida en su unidad natural, porque la tabla la
+    muestra junto a su unidad. En las pruebas de latencia eso significa que
+    menos es mejor, y quien consume este valor debe saberlo (`es_latencia`).
+    """
     t = _POR_CLAVE.get(tipo)
     if t is None:
         return res.get("valor", 0)
     if t.clave == "cpu":
-        return 1000.0 / max(0.01, res.get("p95", 0))
+        return 1000.0 / max(0.01, res.get("p95") or 0.01)
     if t.clave == "memory":
         return res.get("valor", 0) / max(0.1, res.get("p95") or 1.0)
-    if t.es_latencia:
-        return res.get("valor", 0)
     return res.get("valor", 0)
 
 

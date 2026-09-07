@@ -71,6 +71,9 @@ class CircularMeter(Gtk.Overlay):
         self._value_text = "—"
         self._color = _COLOR_VERDE
         self._anim_id = None
+        # Si el widget muere a mitad de una animación, el temporizador seguiría
+        # vivo con una referencia a un objeto ya destruido.
+        self.connect("destroy", lambda *_: self._detener_animacion())
 
         # Base de dibujo para el anillo de progreso circular
         self.drawing_area = Gtk.DrawingArea()
@@ -109,8 +112,18 @@ class CircularMeter(Gtk.Overlay):
             
         self._start_animation()
 
+    def _detener_animacion(self):
+        if self._anim_id is not None:
+            GLib.source_remove(self._anim_id)
+            self._anim_id = None
+
     def _start_animation(self):
         if self._anim_id is not None:
+            return
+        ajustes = Gtk.Settings.get_default()
+        if ajustes is not None and not ajustes.get_property("gtk-enable-animations"):
+            self._fraction = self._target_fraction
+            self.drawing_area.queue_draw()
             return
         self._anim_id = GLib.timeout_add(INTERVALO_FRAME_MS, self._anim_tick)
 

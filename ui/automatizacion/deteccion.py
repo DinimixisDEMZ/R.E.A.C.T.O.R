@@ -12,6 +12,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from utils.i18n import traducir
+from core import sched_ext
+from core.tipos import obtener_scheduler, schedulers_para_benchmark
 from core.constantes import INTERVALO_FRAME_MS, SISTEMA_BASE, CATEGORIAS_RADAR, TIPOS_PRUEBA, MOTOR_REPOSO, DETERMINAR
 from core.benchmark import correr_benchmark
 from core.hybrid import correr_hybrid
@@ -21,7 +23,7 @@ from core.scoring import (
 )
 from core.tipos import MAPA_CHART, valor_para_grafico, claves_hibridas
 from core.database import guardar_run, guardar_resultados_batch, actualizar_log_run
-from utils.logging import log, mostrar_toast
+from utils.logging import log, mostrar_toast, registrar_error
 from utils.helpers import vaciar_contenedor
 from widgets.legend import crear_chip_leyenda
 
@@ -41,7 +43,7 @@ def gestionar_click_auto(win, btn):
             win.split_view.set_content(win.pag_disponibilidad)
             return
 
-        win.solicitar_sudo_si_necesario(lambda: iniciar_auto_test(win, btn))
+        win.ejecutar_accion_privilegiada(lambda: iniciar_auto_test(win, btn))
 
 
 def _preparar_ui_auto_test(win):
@@ -99,51 +101,108 @@ def _registrar_schedulers_en_grafico(win, schedulers):
 
 
 def _calibrar_termica(win):
-    log(win.text_view_logs_auto, "Calibrando base térmica del sistema...", nivel="title")
+    """Toma la temperatura de reposo como referencia del ciclo."""
+    if not win.sensor.hay_sensor():
+        log(win.text_view_logs_auto,
+            "Sin sensor térmico: no se puede descartar la influencia del calor.")
+        return None
     temp_base = win.sensor.calibrar(muestras=3, intervalo=0.5)
-    if temp_base < 10:
-        log(win.text_view_logs_auto, "Sensor térmico no disponible. Omitiendo gestión de calor.")
-        return 999
-    umbral = temp_base + 5.0
-    log(win.text_view_logs_auto, f"Calibración completa: Base {temp_base:.1f}°C | Umbral: {umbral:.1f}°C")
-    return umbral
+    log(win.text_view_logs_auto,
+        f"Temperatura de reposo: {temp_base:.1f} °C "
+        f"(límite del equipo: {win.sensor.tjmax():.0f} °C)")
+    return temp_base
 
 
-def _enfriar_si_necesario(win, temp_actual, umbral):
-    if temp_actual <= umbral:
+def _enfriar_si_necesario(win, temp_base):
+    """Espera a que la temperatura se estabilice antes de la siguiente prueba.
+
+    El criterio anterior era inalcanzable por construcción: comparaba la
+    temperatura después de una prueba contra la de reposo más 5 °C, así que
+    en cualquier portátil el bucle agotaba siempre sus 15 segundos y seguía
+    igual, dejando en el registro un error que no lo era.
+
+    Ahora se espera a que la temperatura *deje de bajar*, que es la condición
+    que de verdad hace comparables dos mediciones consecutivas, y se avisa si
+    el hardware llegó a limitar por temperatura.
+    """
+    if not win.sensor.hay_sensor():
         return
-    GLib.idle_add(win.fila_ganador.set_subtitle, traducir("Estabilizando térmica... ({:.1f}°C)").format(temp_actual))
-    log(win.text_view_logs_auto, f"Enfriando: {temp_actual:.1f}°C -> objetivo {umbral:.1f}°C")
-    timeout_cool = 0
-    while temp_actual > umbral and win.auto_state.en_proceso and timeout_cool < 15:
-        time.sleep(1)
-        timeout_cool += 1
-        temp_actual = win.sensor.obtener_temp()
-        GLib.idle_add(win.fila_ganador.set_subtitle, traducir("Enfriando... {:.1f}°C (Límite: {:.1f}°C)").format(temp_actual, umbral))
-    if timeout_cool >= 15:
-        log(win.text_view_logs_auto, "Continuando análisis (umbral térmico no alcanzado).", nivel="error")
+
+    temperatura = win.sensor.obtener_temp()
+    GLib.idle_add(win.fila_ganador.set_subtitle,
+                  traducir("Estabilizando temperatura... ({:.1f} °C)").format(temperatura))
+
+    resultado = win.sensor.esperar_estabilizacion(
+        espera_maxima=60.0,
+        cancelado=lambda: not win.auto_state.en_proceso)
+
+    if resultado["estabilizado"]:
+        log(win.text_view_logs_auto,
+            f"Temperatura estable en {resultado['temperatura']:.1f} °C "
+            f"tras {resultado['esperado']:.0f} s")
+    elif resultado["motivo"] == "tiempo_agotado":
+        log(win.text_view_logs_auto,
+            f"La temperatura no se estabilizó en 60 s "
+            f"({resultado['temperatura']:.1f} °C). Se continúa.", nivel="warning")
 
 
 def _cambiar_scheduler(win, sc):
+    """Aplica un planificador y espera a que el kernel confirme que gobierna.
+
+    Antes se esperaba 1,5 s fijos tras lanzar el comando y se empezaba a medir.
+    Si el planificador tardaba más en cargar —cosa habitual en equipos lentos,
+    que son justo los que más importan— la primera prueba se ejecutaba todavía
+    bajo el planificador anterior y el resultado se atribuía al nuevo.
+    """
     if sc == SISTEMA_BASE:
-        log(win.text_view_logs_auto, "Evaluando rendimiento nativo del Kernel...", nivel="title")
-        win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-        time.sleep(1)
-        return True
-    log(win.text_view_logs_auto, f"Limpiando para {sc}...")
-    win.scx.detener_todos()
-    time.sleep(2)
+        log(win.text_view_logs_auto, "Evaluando el planificador nativo del kernel...", nivel="title")
+        resultado = win.scx.detener()
+        if not resultado.ok and resultado.codigo != "sin_scheduler":
+            log(win.text_view_logs_auto,
+                f"No se pudo liberar el planificador: {resultado.mensaje}", nivel="error")
+            return False
+        return _esperar_estado(win, None)
+
     log(win.text_view_logs_auto, f"Activando {sc}...", nivel="title")
-    res = win.scx.ejecutar_con_sudo(["scxctl", "start", "-s", sc, "-m", "auto"])
-    if res.returncode != 0:
-        err = res.stderr.strip() or traducir("El planificador no respondió a la señal de inicio.")
-        log(win.text_view_logs_auto, f"FALLO: No se pudo activar {sc}.\nDetalle: {err}", nivel="error")
-        GLib.idle_add(win.fila_ganador.set_subtitle, traducir("Error: {}...").format(GLib.markup_escape_text(err[:50])))
-        win.scx.ejecutar_con_sudo(["scxctl", "stop"])
-        time.sleep(1)
+    resultado = win.scx.aplicar(sc, "auto")
+    if not resultado.ok:
+        log(win.text_view_logs_auto,
+            f"FALLO: no se pudo activar {sc}.\nDetalle: {resultado.mensaje}", nivel="error")
+        GLib.idle_add(win.fila_ganador.set_subtitle,
+                      traducir("Error: {}...").format(
+                          GLib.markup_escape_text((resultado.mensaje or "")[:50])))
         return False
-    time.sleep(1.5)
+
+    if not _esperar_estado(win, sc):
+        log(win.text_view_logs_auto,
+            f"{sc} se lanzó pero el kernel no lo activó; se omite.", nivel="error")
+        win.scx.detener()
+        return False
     return True
+
+
+def _esperar_estado(win, esperado, espera_maxima=15.0):
+    """Espera a que /sys/kernel/sched_ext refleje el planificador esperado.
+
+    `esperado` es el nombre canónico, o None para esperar a que no haya ninguno.
+    """
+    limite = time.monotonic() + espera_maxima
+    while time.monotonic() < limite:
+        if not win.auto_state.en_proceso:
+            return False
+        info = sched_ext.estado()
+        if info["en_transicion"]:
+            time.sleep(0.2)
+            continue
+        if esperado is None and not info["activo"]:
+            return True
+        if esperado is not None and info["activo"] and info["scheduler"] == esperado:
+            # Un instante de margen para que el planificador termine de
+            # asentarse antes de empezar a medir.
+            time.sleep(0.5)
+            return True
+        time.sleep(0.2)
+    return False
 
 
 def _ejecutar_bateria_tests(win, sc, brutos, indice_sc, total_steps):
@@ -160,9 +219,9 @@ def _ejecutar_bateria_tests(win, sc, brutos, indice_sc, total_steps):
         win.auto_state.segundos_objetivos = (scheds_restantes * 20) + ((6 - idx) * 5) + 2
         GLib.idle_add(win.fila_ganador.set_subtitle, traducir("Analizando {}: {} ({}/6)...").format(sc, nombres[idx], idx + 1))
         if t in claves_hibridas():
-            res = correr_hybrid(t, win.scx, win.text_view_logs_auto, tiempo=5, logs=True, modo_dev=win.modo_desarrollador)
+            res = correr_hybrid(t, win.scx, win.text_view_logs_auto, tiempo=None, logs=True, modo_dev=win.modo_desarrollador)
         else:
-            res = correr_benchmark(t, win.scx, win.text_view_logs_auto, tiempo=5, logs=True, modo_dev=win.modo_desarrollador)
+            res = correr_benchmark(t, win.scx, win.text_view_logs_auto, tiempo=None, logs=True, modo_dev=win.modo_desarrollador)
         if res:
             tipo_real = res["tipo"]
             brutos[sc][tipo_real] = res
@@ -237,42 +296,99 @@ def iniciar_auto_test(win, btn):
     _preparar_ui_auto_test(win)
 
     def motor():
-        schedulers = [n for n, (r, c) in win._auto_sched_checks.items() if c.get_active()]
-        todos = [SISTEMA_BASE] + schedulers
-        total_steps = len(todos) * 6
-        brutos = {}
+        # Se recuerda qué gobernaba el equipo ANTES de empezar. Sin esto,
+        # cancelar el ciclo o cerrar la ventana dejaba activo el último
+        # planificador probado, que es un estado que el usuario nunca eligió.
+        estado_original = sched_ext.estado()["scheduler"]
+        win.auto_state.estado_original = estado_original
 
-        _registrar_schedulers_en_grafico(win, todos)
-        umbral = _calibrar_termica(win)
+        try:
+            seleccionados = [n for n, (r, c) in win._auto_sched_checks.items() if c.get_active()]
 
-        if not win.auto_state.en_proceso:
-            return
+            # Se descartan los que no deben medirse desatendidos: scx_chaos
+            # degrada el sistema a propósito, scx_layered no arranca sin su
+            # archivo de capas, scx_flow se autoajusta y levanta un servidor web.
+            aptos = schedulers_para_benchmark(seleccionados)
+            descartados = [n for n in seleccionados if n not in aptos]
+            for nombre in descartados:
+                ficha = obtener_scheduler(nombre)
+                motivo = (ficha.advertencia if ficha and ficha.advertencia
+                          else traducir("no es apto para pruebas desatendidas"))
+                log(win.text_view_logs_auto,
+                    f"Se omite {nombre}: {motivo}", nivel="warning")
 
-        for i, sc in enumerate(todos):
+            todos = [SISTEMA_BASE] + aptos
+            total_steps = len(todos) * 6
+            brutos = {}
+
+            _registrar_schedulers_en_grafico(win, todos)
+            temp_base = _calibrar_termica(win)
+
             if not win.auto_state.en_proceso:
-                break
+                return
 
-            _enfriar_si_necesario(win, win.sensor.obtener_temp(), umbral)
+            for i, sc in enumerate(todos):
+                if not win.auto_state.en_proceso:
+                    break
 
-            if not win.auto_state.en_proceso:
-                break
+                _enfriar_si_necesario(win, temp_base)
 
-            if not _cambiar_scheduler(win, sc):
-                continue
+                if not win.auto_state.en_proceso:
+                    break
 
-            brutos[sc] = {}
-            _ejecutar_bateria_tests(win, sc, brutos, i, total_steps)
-            _actualizar_scores_parciales(win, brutos)
+                if not _cambiar_scheduler(win, sc):
+                    continue
 
-        run_id = _guardar_resultados_db(win, brutos)
-        if win.auto_state.en_proceso and brutos:
-            _finalizar_con_exito(win, brutos, run_id)
-        elif not brutos:
+                # A partir de acá se vigila si el hardware limita por calor:
+                # una medición con limitación térmica no es comparable.
+                win.sensor.marcar_inicio_throttling()
+
+                brutos[sc] = {}
+                _ejecutar_bateria_tests(win, sc, brutos, i, total_steps)
+
+                if win.sensor.hubo_throttling():
+                    log(win.text_view_logs_auto,
+                        f"El hardware limitó por temperatura durante {sc}: "
+                        f"sus resultados pueden no ser comparables.", nivel="warning")
+                    for resultado in brutos[sc].values():
+                        resultado["throttling"] = True
+
+                _actualizar_scores_parciales(win, brutos)
+
+            run_id = _guardar_resultados_db(win, brutos)
+            if win.auto_state.en_proceso and brutos:
+                _finalizar_con_exito(win, brutos, run_id)
+            elif not brutos:
+                _restaurar_estado_original(win)
+                GLib.idle_add(lambda: finalizar_auto_test(win, None))
+            else:
+                # Ciclo interrumpido: el equipo debe volver a lo que tenía, no
+                # quedarse con el último planificador que se estaba probando.
+                _restaurar_estado_original(win)
+                _finalizar_interrumpido(win, brutos, run_id)
+        except Exception as e:
+            # Sin esto, cualquier excepción en el hilo motor dejaba la pestaña
+            # bloqueada para siempre y sin ningún mensaje.
+            registrar_error("iniciar_auto_test", e)
+            log(win.text_view_logs_auto, str(e), nivel="error")
+            _restaurar_estado_original(win)
             GLib.idle_add(lambda: finalizar_auto_test(win, None))
-        else:
-            _finalizar_interrumpido(win, brutos, run_id)
 
     threading.Thread(target=motor, daemon=True).start()
+
+
+def _restaurar_estado_original(win):
+    """Devuelve el planificador que gobernaba antes de empezar el ciclo."""
+    original = getattr(win.auto_state, "estado_original", None)
+    actual = sched_ext.estado()["scheduler"]
+    if actual == original:
+        return
+    log(win.text_view_logs_auto,
+        traducir("Restaurando el estado anterior: {}").format(original or SISTEMA_BASE))
+    if original:
+        win.scx.aplicar(original, "auto")
+    else:
+        win.scx.detener()
 
 
 def finalizar_auto_test_success(win):
@@ -289,19 +405,25 @@ def finalizar_auto_test_success(win):
     refrescar_historial(win)
 
     def _aplicar_ganador():
+        # `aplicar()` decide solo entre arrancar y conmutar. Antes se usaba
+        # siempre `scxctl start`, que el loader rechaza si ya hay un
+        # planificador activo — y al terminar el ciclo siempre lo había, así que
+        # el ganador no llegaba a aplicarse nunca.
+        ganador = win.auto_state.ganador_final
         try:
-            if win.auto_state.ganador_final == SISTEMA_BASE:
-                res = win.scx.ejecutar_con_sudo(["scxctl", "stop"])
+            if ganador == SISTEMA_BASE:
+                resultado = win.scx.detener()
             else:
-                res = win.scx.ejecutar_con_sudo(["scxctl", "start", "-s", win.auto_state.ganador_final, "-m", "auto"])
+                resultado = win.scx.aplicar(ganador, "auto")
 
-            if res.returncode != 0 and "not running" not in (res.stderr or "").lower():
-                err = res.stderr.strip() or "Error desconocido al aplicar scheduler"
-                raise subprocess.SubprocessError(err)
-
-            GLib.idle_add(win.sincronizar_sistema)
-            mostrar_toast(win, traducir("Aplicado automáticamente: {}").format(win.auto_state.ganador_final))
-        except (subprocess.SubprocessError, OSError) as e:
+            if resultado.ok or resultado.codigo == "sin_scheduler":
+                GLib.idle_add(win.sincronizar_sistema)
+                mostrar_toast(win, traducir("Aplicado automáticamente: {}").format(ganador))
+            else:
+                mostrar_toast(win, resultado.mensaje or traducir("No se pudo aplicar"),
+                              prefijo=traducir("Error al aplicar"))
+        except Exception as e:
+            registrar_error("aplicar_ganador", e)
             mostrar_toast(win, str(e), prefijo=traducir("Error al aplicar"))
 
     threading.Thread(target=_aplicar_ganador, daemon=True).start()
