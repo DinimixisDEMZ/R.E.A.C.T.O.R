@@ -396,11 +396,20 @@ def eliminar_historial():
 
 
 def guardar_compatibilidad(nombre, kernel, compatible, mensaje):
+    """Guarda el resultado de compatibilidad de un planificador.
+
+    El nombre se normaliza a su forma canónica (`scx_lavd`). Sin esto, las
+    entradas antiguas guardadas en forma corta (`lavd`) convivirían con las
+    nuevas y el mismo planificador aparecería dos veces.
+    """
+    from core.sched_ext import canonizar, nombre_corto
+    nombre = canonizar(nombre) or nombre
     conn = _get_conn()
     try:
+        # Se borran ambas formas para no dejar el duplicado antiguo detrás.
         conn.execute(
-            "DELETE FROM compatibility WHERE scheduler_name=? AND kernel_version=?",
-            (nombre, kernel)
+            "DELETE FROM compatibility WHERE scheduler_name IN (?, ?) AND kernel_version=?",
+            (nombre, nombre_corto(nombre), kernel)
         )
         conn.execute(
             "INSERT INTO compatibility (scheduler_name, kernel_version, is_compatible, message, timestamp) "
@@ -420,7 +429,14 @@ def cargar_compatibilidad(kernel):
             "FROM compatibility WHERE kernel_version = ?",
             (kernel,)
         ).fetchall()
-        return {r["scheduler_name"]: (bool(r["is_compatible"]), r["message"], r["timestamp"]) for r in rows}
+        # Las filas guardadas antes de la normalización usan la forma corta:
+        # se canonizan al leer para que una caché previa siga siendo válida.
+        from core.sched_ext import canonizar
+        return {
+            (canonizar(r["scheduler_name"]) or r["scheduler_name"]):
+                (bool(r["is_compatible"]), r["message"], r["timestamp"])
+            for r in rows
+        }
     finally:
         _close_conn(conn)
 

@@ -128,3 +128,29 @@ class TestDBTemporal:
         hay_cambio, cambios = detectar_cambio_version({"kernel": "6.2.0", "stressng": "0.17", "hyperfine": "1.18"})
         assert hay_cambio is True
         assert "kernel" in cambios
+
+
+class TestNormalizacionDeCompatibilidad:
+    """Las dos convenciones de nombre no deben duplicar filas."""
+
+    def test_una_entrada_antigua_en_forma_corta_se_lee_canonica(self):
+        activar_db_temporal()
+        try:
+            guardar_compatibilidad("lavd", "7.2.3", True, "guardado antiguo")
+            cache = cargar_compatibilidad("7.2.3")
+            assert "scx_lavd" in cache
+            assert "lavd" not in cache
+        finally:
+            desactivar_db_temporal()
+
+    def test_reverificar_reemplaza_la_entrada_antigua_sin_duplicarla(self):
+        activar_db_temporal()
+        try:
+            guardar_compatibilidad("lavd", "7.2.3", True, "antiguo")
+            guardar_compatibilidad("scx_lavd", "7.2.3", False, "reverificado")
+            cache = cargar_compatibilidad("7.2.3")
+            assert len(cache) == 1
+            assert cache["scx_lavd"][0] is False
+            assert cache["scx_lavd"][1] == "reverificado"
+        finally:
+            desactivar_db_temporal()

@@ -92,3 +92,20 @@ class TestContraElEquipoReal:
         dim = obtener_dimensionado(recargar=True)
         assert dim.trabajadores >= 1
         assert DURACION_MINIMA <= dim.duracion <= DURACION_MAXIMA
+
+
+class TestCacheNoContaminada:
+    def test_una_duracion_puntual_no_afecta_al_resto_de_la_sesion(self):
+        """Regresión: la petición puntual sobrescribía la caché global.
+
+        Un único "mide 20 segundos" cambiaba la duración de todas las
+        mediciones posteriores de la sesión, sin que nadie lo pidiera y
+        rompiendo la comparabilidad del historial.
+        """
+        base = obtener_dimensionado(recargar=True).duracion
+        puntual = obtener_dimensionado(duracion_solicitada=25).duracion
+        assert puntual != base
+        assert obtener_dimensionado().duracion == base
+
+    def test_el_dimensionado_normal_si_se_cachea(self):
+        assert obtener_dimensionado() is obtener_dimensionado()

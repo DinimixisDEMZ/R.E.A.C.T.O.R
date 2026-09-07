@@ -114,8 +114,17 @@ _DIMENSIONADO = None
 
 
 def obtener_dimensionado(recargar=False, duracion_solicitada=None):
-    """Dimensionado cacheado del equipo actual."""
+    """Dimensionado del equipo actual.
+
+    El resultado se cachea, pero pedir una duración concreta NO toca la caché:
+    devuelve un dimensionado propio para ese uso. Si la sobrescribiera, una
+    petición puntual de "mide 20 segundos" se filtraría al resto de la sesión y
+    todas las mediciones posteriores cambiarían de duración sin que nadie lo
+    pidiera, arruinando la comparabilidad del historial.
+    """
     global _DIMENSIONADO
-    if _DIMENSIONADO is None or recargar or duracion_solicitada is not None:
-        _DIMENSIONADO = Dimensionado(duracion_solicitada=duracion_solicitada)
+    if duracion_solicitada is not None:
+        return Dimensionado(duracion_solicitada=duracion_solicitada)
+    if _DIMENSIONADO is None or recargar:
+        _DIMENSIONADO = Dimensionado()
     return _DIMENSIONADO
