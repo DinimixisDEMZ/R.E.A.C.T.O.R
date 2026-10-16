@@ -9,7 +9,8 @@ echo "=== Extrayendo cadenas traducibles ==="
 
 echo "" > "$POT"
 
-find . -name "*.py" -not -path "./.*" -not -path "*/__pycache__/*" | while read f; do
+find . -name "*.py" -not -path "./.*" -not -path "*/__pycache__/*" \
+    -not -path "./build/*" -not -path "./dist/*" | while read f; do
     xgettext -j -o "$POT" -L Python --keyword=_ --keyword=traducir --from-code=UTF-8 "$f" 2>/dev/null || true
 done
 

@@ -21,7 +21,7 @@ INFO_PRUEBAS = {
         ),
         "estudio": traducir(
             "Un valor bajo (pts) indica mejor rendimiento: el scheduler "
-            "completa más cambios de contexto por segundo. Compará "
+            "completa más cambios de contexto por segundo. Compare "
             "planificadores ejecutando esta prueba con distintos schedulers activos."
         ),
         "detalle": traducir(

@@ -54,12 +54,12 @@ def _check_binario(nombre_bin: str, nombre_mostrar: str = "") -> Resultado:
         if bundle:
             return Resultado(True, f"{bundle} (bundle)")
         return Resultado(False, f"{nombre} no incluido en el AppImage",
-                         sugerencia="El AppImage se construyó sin este binario. Revisá los logs del CI.")
+                         sugerencia="El AppImage se construyó sin este binario. Revise los logs del CI.")
     ruta = shutil.which(nombre_bin)
     if ruta:
         return Resultado(True, f"{ruta}")
     return Resultado(False, "No encontrado en el sistema",
-                     sugerencia=f"Instalá {nombre_bin} con tu gestor de paquetes (ej: 'sudo eopkg install {nombre_bin}')")
+                     sugerencia=f"Instale {nombre_bin} con su gestor de paquetes (ej: 'sudo eopkg install {nombre_bin}')")
 
 
 def _check_version(nombre_bin: str, args: list[str] | None = None) -> Resultado:
@@ -160,7 +160,7 @@ def _check_sistema(nombre_bin: str) -> Resultado:
     if ruta:
         return Resultado(True, f"{ruta}")
     return Resultado(False, "No encontrado en el sistema",
-                     sugerencia=f"Instalá {nombre_bin} con tu gestor de paquetes")
+                     sugerencia=f"Instale {nombre_bin} con su gestor de paquetes")
 
 
 def _check_rt_tests() -> Resultado:
@@ -186,7 +186,7 @@ def _check_gresource() -> Resultado:
     if os.path.isfile(ruta):
         return Resultado(True, f"{ruta}")
     return Resultado(False, "reactor.gresource no encontrado",
-                     sugerencia="Ejecutá: glib-compile-resources data/icons/reactor.gresource.xml")
+                     sugerencia="Ejecute: glib-compile-resources data/icons/reactor.gresource.xml")
 
 
 def _check_dependencias_python() -> Resultado:

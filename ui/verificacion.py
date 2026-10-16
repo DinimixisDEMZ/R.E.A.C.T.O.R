@@ -132,9 +132,9 @@ def mostrar_verificacion(win, automatico=False):
         criticos_ok = todo_critico_ok(resultados)
         btn_continuar.set_sensitive(criticos_ok)
         if criticos_ok:
-            subtitulo.set_label(traducir("Todos los chequeos críticos pasaron. Podés usar R.E.A.C.T.O.R."))
+            subtitulo.set_label(traducir("Todos los chequeos críticos pasaron. Puede usar R.E.A.C.T.O.R."))
         else:
-            subtitulo.set_label(traducir("Hay fallos críticos. Revisá los detalles y reinstalá lo necesario."))
+            subtitulo.set_label(traducir("Hay fallos críticos. Revise los detalles y reinstale lo necesario."))
 
     def _ejecutar():
         resultados = ejecutar_verificaciones()

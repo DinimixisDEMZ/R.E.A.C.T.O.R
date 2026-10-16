@@ -82,7 +82,7 @@ def configurar_ui_controles(win):
                 win._sched_info_desc.set_label(traducir(desc))
                 win._sched_info_link.set_uri(url or "https://github.com/sched-ext/scx")
             else:
-                win._sched_info_desc.set_label(traducir("No hay información disponible para este planificador. Consultá la documentación oficial para más detalles."))
+                win._sched_info_desc.set_label(traducir("No hay información disponible para este planificador. Consulte la documentación oficial para más detalles."))
                 win._sched_info_link.set_uri("https://github.com/sched-ext/scx")
 
             r, g, b = generar_color_hash(name)
@@ -189,7 +189,7 @@ def configurar_ui_controles(win):
     def _mostrar_dialogo_reinicio():
         dialogo = Adw.AlertDialog(
             heading=traducir("Cambio de idioma"),
-            body=traducir("Reiniciá la aplicación para que los cambios surtan efecto."),
+            body=traducir("Reinicie la aplicación para que los cambios surtan efecto."),
         )
         dialogo.add_response("ok", traducir("OK"))
         dialogo.set_default_response("ok")
