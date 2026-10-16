@@ -84,8 +84,12 @@ class DialogoPassword(Adw.Dialog):
         self.btn.set_label(traducir("Verificando…"))
 
         def _trabajo():
-            ok = self.on_success(pwd)
-            del pwd
+            # Nunca dejar que una excepción mate el thread sin pasar por
+            # _finalizar: el diálogo quedaría pillado con _validando=True.
+            try:
+                ok = bool(self.on_success(pwd))
+            except Exception:
+                ok = False
             GLib.idle_add(self._finalizar, ok)
 
         threading.Thread(target=_trabajo, daemon=True).start()
@@ -93,6 +97,7 @@ class DialogoPassword(Adw.Dialog):
     def _finalizar(self, ok):
         """Se ejecuta en el hilo de UI tras validar la contraseña."""
         if ok:
+            self.entry.set_text("")
             self.close()
             return False
 

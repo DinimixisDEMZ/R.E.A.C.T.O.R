@@ -267,15 +267,11 @@ class VentanaSimple(Adw.ApplicationWindow):
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='reactor',
             release_notes_version=VERSION,
-            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0.6 — Auditoría, robustez e i18n.</p>
+            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0.7 — Corrección del diálogo de autenticación.</p>
 <ul>
-<li>Auditoría completa: 4 críticos, 6 altos y 8 medios corregidos</li>
-<li>Password dialog asíncrono (ya no congela la UI)</li>
-<li>Timers y descriptores liberados correctamente</li>
-<li>Español neutro en toda la interfaz</li>
-<li>Traducciones regeneradas (es, en, fr, de, it, pt_BR)</li>
-<li>AppImage: build automático en GitHub con releases</li>
-<li>57 tests automatizados</li>
+<li>Corregido: el diálogo de contraseña quedaba sin respuesta tras validar (regresión de la validación asíncrona)</li>
+<li>La validación ahora es a prueba de excepciones: cualquier fallo muestra el error en el diálogo</li>
+<li>La contraseña se limpia de la entrada al autenticar con éxito</li>
 </ul>"""),
         )
 
