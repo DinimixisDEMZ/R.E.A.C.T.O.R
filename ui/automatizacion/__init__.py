@@ -14,6 +14,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 from utils.i18n import traducir
+from utils.helpers import abrir_bottom_sheet_logs
 from utils.iconos import POTENCIA, RESPUESTA, FLUIDEZ
 from ui.automatizacion.pesos import (
     animar_sliders,
@@ -29,7 +30,6 @@ from ui.automatizacion.pesos import (
 )
 from ui.automatizacion.historial import (
     refrescar_historial,
-    navegar_historial,
     actualizar_botones_nav,
     seleccionar_run,
 )
@@ -142,16 +142,7 @@ def configurar_ui_automatizacion(win):
     win._dialog_logs_auto = None
 
     def _abrir_logs():
-        if win._dialog_logs_auto is None:
-            scrolled = Gtk.ScrolledWindow(min_content_height=400, vexpand=True)
-            scrolled.set_child(win.text_view_logs_auto)
-            win._dialog_logs_auto = Adw.Dialog()
-            ancho = win.get_width()
-            win._dialog_logs_auto.set_content_width(max(ancho - 40, 400))
-            win._dialog_logs_auto.set_content_height(500)
-            win._dialog_logs_auto.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
-            win._dialog_logs_auto.set_child(scrolled)
-        win._dialog_logs_auto.present(win)
+        win._dialog_logs_auto = abrir_bottom_sheet_logs(win, win.text_view_logs_auto, win._dialog_logs_auto)
 
     btn_logs = Adw.ActionRow(
         title=traducir("Terminal de Análisis"),

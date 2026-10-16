@@ -179,15 +179,6 @@ def mostrar_verificacion(win, automatico=False):
     btn_continuar.connect("clicked", lambda b: dialog.close())
     dialog.connect("closed", lambda *_: _limpiar_timer())
 
-    # ── Cerrar con Escape ──
-    key_controller = Gtk.EventControllerKey()
-    def _on_key(c, k, m, d):
-        if k == Gdk.KEY_Escape:
-            dialog.close()
-            return True
-        return False
-    key_controller.connect("key-pressed", _on_key)
-
     dialog.set_child(scrolled)
     dialog.present(win)
 

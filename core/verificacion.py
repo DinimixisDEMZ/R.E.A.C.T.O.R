@@ -263,22 +263,10 @@ def ejecutar_verificaciones(solo_ids: list[str] | None = None) -> list[tuple[Ver
     return _RESULTADOS
 
 
-def obtener_resultados() -> list[tuple[Verificacion, Resultado]]:
-    return _RESULTADOS
-
-
 def todo_critico_ok(resultados: list[tuple[Verificacion, Resultado]] | None = None) -> bool:
     if resultados is None:
         resultados = _RESULTADOS
     return all(res.exito for v, res in resultados if v.critico)
-
-
-def resumen_critico(resultados: list[tuple[Verificacion, Resultado]] | None = None) -> str:
-    if resultados is None:
-        resultados = _RESULTADOS
-    ok = sum(1 for v, res in resultados if v.critico and res.exito)
-    total = sum(1 for v, _ in resultados if v.critico)
-    return f"{ok}/{total}"
 
 
 # ─── Persistencia del flag de verificación ───

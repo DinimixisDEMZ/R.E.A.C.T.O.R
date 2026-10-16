@@ -46,6 +46,25 @@ def vaciar_contenedor(container):
         container.remove(c)
 
 
+def abrir_bottom_sheet_logs(win, text_view, dialogo=None):
+    """
+    Abre (o crea y abre) un Adw.Dialog en modo BOTTOM_SHEET mostrando `text_view`.
+    Reutiliza `dialogo` si se pasa uno previamente creado. Devuelve el diálogo.
+    """
+    from gi.repository import Gtk, Adw
+    if dialogo is None:
+        dialogo = Adw.Dialog()
+        ancho = win.get_width()
+        dialogo.set_content_width(max(ancho - 40, 400))
+        dialogo.set_content_height(500)
+        dialogo.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
+        scrolled = Gtk.ScrolledWindow(min_content_height=400, vexpand=True)
+        scrolled.set_child(text_view)
+        dialogo.set_child(scrolled)
+    dialogo.present(win)
+    return dialogo
+
+
 def resultado_base(scx_manager, tipo, valor, p95, waste, sc_act=None, modo_act=None):
     from core.constantes import SISTEMA_BASE
     if sc_act is None or modo_act is None:

@@ -2,7 +2,7 @@
 scxtop tab: embedded terminal running the scxtop scheduler visualizer.
 """
 
-import subprocess
+import shutil
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -31,7 +31,7 @@ def configurar_pestana_scxtop(win):
             margin_top=24, margin_bottom=24, hexpand=True))
         return pagina_scxtop
 
-    ruta_scxtop = subprocess.run(["which", "scxtop"], capture_output=True, text=True).stdout.strip()
+    ruta_scxtop = shutil.which("scxtop")
     if ruta_scxtop:
         terminal = Vte.Terminal(hexpand=True, vexpand=True)
         def _lanzar_scxtop():

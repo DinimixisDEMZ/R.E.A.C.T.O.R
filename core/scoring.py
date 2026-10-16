@@ -64,6 +64,19 @@ def media_armonica(valores):
     return len(valores) / sum(1.0 / max(0.01, x) for x in valores)
 
 
+def _extraer_p95(item):
+    """Extrae p95 de un resultado; fallback a métricas context-switch/mutex (ns→µs)."""
+    p95 = item.get('p95')
+    if p95 is not None:
+        return p95
+    m = item.get('metrics') or {}
+    ns = _first(m.get('nanosecs-per-context-switch-pipe-method'), m.get('nanosecs-per-context-switch'))
+    if ns:
+        return ns / 1000.0
+    ns_mutex = m.get('nanosecs-per-mutex')
+    return ns_mutex / 1000.0 if ns_mutex else 1.0
+
+
 def calcular_mejores(brutos, tipos=("cpu", "threads", "memory")):
     """Calcula los mejores valores de referencia por tipo de prueba.
     
@@ -84,15 +97,7 @@ def calcular_mejores(brutos, tipos=("cpu", "threads", "memory")):
                 continue
             item = entry[t_tipo]
             val = _first(item.get('valor'), item.get('val'), (item.get('metrics') or {}).get('bogo-ops-per-second-real-time'))
-            p95 = item.get('p95')
-            if p95 is None:
-                m = item.get('metrics') or {}
-                ns = _first(m.get('nanosecs-per-context-switch-pipe-method'), m.get('nanosecs-per-context-switch'))
-                if ns:
-                    p95 = ns / 1000.0
-                else:
-                    ns_mutex = m.get('nanosecs-per-mutex')
-                    p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
+            p95 = _extraer_p95(item)
 
             vals.append(val)
             if p95 and p95 > 0:
@@ -116,14 +121,7 @@ def _normalizar_entrada(item):
     """
     m = item.get('metrics') or {}
     val = _first(item.get('valor'), item.get('val'), m.get('bogo-ops-per-second-real-time'))
-    p95 = item.get('p95')
-    if p95 is None:
-        ns = _first(m.get('nanosecs-per-context-switch-pipe-method'), m.get('nanosecs-per-context-switch'))
-        if ns:
-            p95 = ns / 1000.0
-        else:
-            ns_mutex = m.get('nanosecs-per-mutex')
-            p95 = ns_mutex / 1000.0 if ns_mutex else 1.0
+    p95 = _extraer_p95(item)
 
     waste = item.get('waste')
     if waste is None:

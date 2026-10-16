@@ -8,13 +8,15 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
+from utils.i18n import traducir
+
 
 class DialogoPassword(Adw.Dialog):
     """Diálogo modal para solicitar contraseña de administrador."""
 
     def __init__(self, parent_window, on_success):
         super().__init__()
-        self.set_title("Autenticación Requerida")
+        self.set_title(traducir("Autenticación Requerida"))
         self.set_content_width(350)
         self.set_content_height(200)
         self.on_success = on_success
@@ -30,13 +32,13 @@ class DialogoPassword(Adw.Dialog):
         box.append(icon)
 
         lbl = Gtk.Label(
-            label="Se requieren permisos de administrador\npara gestionar el kernel.",
+            label=traducir("Se requieren permisos de administrador\npara gestionar el kernel."),
             justify=Gtk.Justification.CENTER
         )
         lbl.add_css_class("title-4")
         box.append(lbl)
 
-        self.entry = Gtk.PasswordEntry(placeholder_text="Contraseña de root/sudo")
+        self.entry = Gtk.PasswordEntry(placeholder_text=traducir("Contraseña de root/sudo"))
         self.entry.connect("activate", self.validar)
         self.entry.connect("changed", self.on_buffer_changed)
         box.append(self.entry)
@@ -45,7 +47,7 @@ class DialogoPassword(Adw.Dialog):
         self.lbl_error.set_visible(False)
         box.append(self.lbl_error)
 
-        self.btn = Gtk.Button(label="Cancelar", css_classes=["pill"])
+        self.btn = Gtk.Button(label=traducir("Cancelar"), css_classes=["pill"])
         self.btn.connect("clicked", self.validar)
         box.append(self.btn)
 
@@ -60,10 +62,10 @@ class DialogoPassword(Adw.Dialog):
             return
         self.lbl_error.set_visible(False)
         if self.entry.get_text():
-            self.btn.set_label("Desbloquear")
+            self.btn.set_label(traducir("Desbloquear"))
             self.btn.add_css_class("suggested-action")
         else:
-            self.btn.set_label("Cancelar")
+            self.btn.set_label(traducir("Cancelar"))
             self.btn.remove_css_class("suggested-action")
 
     def validar(self, *args):
@@ -86,7 +88,7 @@ class DialogoPassword(Adw.Dialog):
             self.entry.set_sensitive(True)
             self.btn.set_sensitive(True)
             self.entry.set_text("")
-            self.lbl_error.set_label("Contraseña incorrecta o fallo en sudo.")
+            self.lbl_error.set_label(traducir("Contraseña incorrecta o fallo en sudo."))
             self.lbl_error.set_visible(True)
             self.entry.grab_focus()
             del pwd

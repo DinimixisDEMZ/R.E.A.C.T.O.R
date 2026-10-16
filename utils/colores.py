@@ -36,11 +36,6 @@ def generar_color_hash(name):
     return hsl_to_rgb(hue, sat, lit)
 
 
-def obtener_color_css(name):
-    r, g, b = generar_color_hash(name)
-    return f"rgb({int(r*255)}, {int(g*255)}, {int(b*255)})"
-
-
 def _linear_to_srgb(v):
     if v <= 0.0031308:
         return v * 12.92

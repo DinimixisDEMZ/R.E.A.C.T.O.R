@@ -42,10 +42,6 @@ version = {attr = "core.constantes.VERSION"}
 [tool.setuptools.packages.find]
 include = ["core*", "ui*", "utils*", "widgets*"]
 
-[tool.setuptools.package-data]
-reactor = ["data/icons/*"]
-include = ["core*", "ui*", "utils*", "widgets*"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

@@ -446,7 +446,9 @@ def configurar_pestana_monitor(win):
         archivos_eventos = glob.glob("/sys/kernel/sched_ext/*/events")
         lineas_eventos = []
         for ae in archivos_eventos:
-            for linea in open(ae).read().strip().splitlines():
+            with open(ae) as archivo:
+                contenido = archivo.read()
+            for linea in contenido.strip().splitlines():
                 partes = linea.split(None, 1)
                 if len(partes) == 2:
                     nombre = partes[0].replace("SCX_EV_", "").replace("_", " ").title()

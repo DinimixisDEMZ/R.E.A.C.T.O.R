@@ -101,7 +101,9 @@ def main():
         return 1
 
     if advertencias:
-        _mostrar_verificacion(advertencias, bloqueante=False)
+        continuar = _mostrar_verificacion(advertencias, bloqueante=False)
+        if not continuar:
+            return 1
 
     from app import VentanaSimple
 
@@ -155,14 +157,18 @@ def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
             caja.append(adv_lista)
 
         if not bloqueante:
+            mostrar_caixa = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=8,
+                halign=Gtk.Align.CENTER,
+            )
             btn_cont = Gtk.Button(
                 label=traducir("Continuar de todas formas"),
-                halign=Gtk.Align.CENTER,
                 css_classes=["suggested-action", "pill"],
             )
             btn_cont.set_margin_top(12)
-            btn_cont.connect("clicked", lambda b: (win.close(), app.quit()))
-            caja.append(btn_cont)
+            btn_cont.connect("clicked", lambda b: (setattr(app, "_continuar", True), app.quit()))
+            mostrar_caixa.append(btn_cont)
 
         btn_salir = Gtk.Button(
             label=traducir("Cerrar Aplicación") if bloqueante else traducir("Salir"),
@@ -170,8 +176,12 @@ def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
             css_classes=["destructive-action", "pill"] if bloqueante else ["pill"],
         )
         btn_salir.set_margin_top(6)
-        btn_salir.connect("clicked", lambda b: app.quit())
-        caja.append(btn_salir)
+        btn_salir.connect("clicked", lambda b: (setattr(app, "_continuar", False), app.quit()))
+        if not bloqueante:
+            mostrar_caixa.append(btn_salir)
+            caja.append(mostrar_caixa)
+        else:
+            caja.append(btn_salir)
 
         clamp = Adw.Clamp(maximum_size=450, tightening_threshold=300)
         clamp.set_child(caja)
@@ -192,6 +202,7 @@ def _mostrar_verificacion(mensajes, advertencias=None, bloqueante=False):
 
     if bloqueante:
         sys.exit(1)
+    return getattr(app, "_continuar", False)
 
 
 if __name__ == "__main__":

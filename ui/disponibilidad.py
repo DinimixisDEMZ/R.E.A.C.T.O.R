@@ -12,7 +12,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib
 
 from utils.logging import log
-from utils.helpers import limpiar_texto
+from utils.helpers import abrir_bottom_sheet_logs, limpiar_texto
 from core.database import cargar_compatibilidad, guardar_compatibilidad, limpiar_compatibilidad, obtener_historial_compatibilidad
 from utils.i18n import traducir
 
@@ -34,6 +34,44 @@ def _mensaje_corto(msg, compatible):
         return traducir("Error {}").format(msg[idx:idx+6].strip()) if idx >= 0 else traducir("Error")
     if "error" in ml: return traducir("Error")
     return msg[:10] + "…" if len(msg) > 10 else msg
+
+
+def _simplificar_kernel(kv):
+    return kv or "—"
+
+
+def _crear_fila_scheduler(nombre, cache, win, grupo):
+    """Crea una fila de scheduler con spinner/icono y estilo según el caché."""
+    row = Adw.ActionRow(title=nombre)
+
+    suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
+    spinner = Adw.Spinner()
+    spinner.set_visible(False)
+    icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
+    icono.add_css_class("dim-label")
+    suffix_box.append(spinner)
+    suffix_box.append(icono)
+    row.add_suffix(suffix_box)
+
+    if nombre in cache:
+        compatible, mensaje, ts = cache[nombre]
+        if compatible:
+            icono.set_from_icon_name("emblem-ok-symbolic")
+            icono.remove_css_class("dim-label")
+            icono.add_css_class("success")
+        else:
+            icono.set_from_icon_name("dialog-error-symbolic")
+            icono.remove_css_class("dim-label")
+            icono.add_css_class("error")
+        row.set_subtitle(_mensaje_corto(mensaje, compatible))
+        if mensaje:
+            row.set_tooltip_text(mensaje)
+    else:
+        row.set_subtitle(traducir("Sin verificar"))
+
+    win._disp_filas[nombre] = (row, spinner, icono)
+    grupo.add(row)
+    return row
 
 
 def _simplificar_kernel(kv):
@@ -70,35 +108,7 @@ def configurar_ui_disponibilidad(win):
     cache = cargar_compatibilidad(kernel_actual) if kernel_actual else {}
 
     for nombre in nombres:
-        row = Adw.ActionRow(title=nombre)
-
-        suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
-        spinner = Adw.Spinner()
-        spinner.set_visible(False)
-        icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
-        icono.add_css_class("dim-label")
-        suffix_box.append(spinner)
-        suffix_box.append(icono)
-        row.add_suffix(suffix_box)
-
-        if nombre in cache:
-            compatible, mensaje, ts = cache[nombre]
-            if compatible:
-                icono.set_from_icon_name("emblem-ok-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("success")
-            else:
-                icono.set_from_icon_name("dialog-error-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("error")
-            row.set_subtitle(_mensaje_corto(mensaje, compatible))
-            if mensaje:
-                row.set_tooltip_text(mensaje)
-        else:
-            row.set_subtitle(traducir("Sin verificar"))
-
-        win._disp_filas[nombre] = (row, spinner, icono)
-        grupo.add(row)
+        _crear_fila_scheduler(nombre, cache, win, grupo)
 
     win._disp_grupo_scheds = grupo
     pref_page.add(grupo)
@@ -109,16 +119,7 @@ def configurar_ui_disponibilidad(win):
     win._dialog_logs_disp = None
 
     def _abrir_logs():
-        if win._dialog_logs_disp is None:
-            scrolled = Gtk.ScrolledWindow(min_content_height=400, vexpand=True)
-            scrolled.set_child(win.text_view_logs_disp)
-            win._dialog_logs_disp = Adw.Dialog()
-            ancho = win.get_width()
-            win._dialog_logs_disp.set_content_width(max(ancho - 40, 400))
-            win._dialog_logs_disp.set_content_height(500)
-            win._dialog_logs_disp.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
-            win._dialog_logs_disp.set_child(scrolled)
-        win._dialog_logs_disp.present(win)
+        win._dialog_logs_disp = abrir_bottom_sheet_logs(win, win.text_view_logs_disp, win._dialog_logs_disp)
 
     btn_logs = Adw.ActionRow(
         title=traducir("Terminal de Diagnóstico"),
@@ -180,35 +181,7 @@ def recargar_disponibilidad_ui(win):
 
     # Añadir filas nuevas
     for nombre in nuevos_set - antiguos:
-        row = Adw.ActionRow(title=nombre)
-
-        suffix_box = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
-        spinner = Adw.Spinner()
-        spinner.set_visible(False)
-        icono = Gtk.Image.new_from_icon_name("dialog-question-symbolic")
-        icono.add_css_class("dim-label")
-        suffix_box.append(spinner)
-        suffix_box.append(icono)
-        row.add_suffix(suffix_box)
-
-        if nombre in cache:
-            compatible, mensaje, ts = cache[nombre]
-            if compatible:
-                icono.set_from_icon_name("emblem-ok-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("success")
-            else:
-                icono.set_from_icon_name("dialog-error-symbolic")
-                icono.remove_css_class("dim-label")
-                icono.add_css_class("error")
-            row.set_subtitle(_mensaje_corto(mensaje, compatible))
-            if mensaje:
-                row.set_tooltip_text(mensaje)
-        else:
-            row.set_subtitle(traducir("Sin verificar"))
-
-        win._disp_filas[nombre] = (row, spinner, icono)
-        grupo.add(row)
+        _crear_fila_scheduler(nombre, cache, win, grupo)
 
     _refrescar_historial_compat(win)
 

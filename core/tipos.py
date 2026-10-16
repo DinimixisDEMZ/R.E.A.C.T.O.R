@@ -38,18 +38,6 @@ for t in TIPOS:
         _POR_CLAVE[a] = t
 
 
-def obtener_tipo(clave: str) -> TipoPrueba | None:
-    return _POR_CLAVE.get(clave)
-
-
-def es_tipo_valido(clave: str) -> bool:
-    return clave in _POR_CLAVE
-
-
-def claves_stress_ng() -> tuple[str, ...]:
-    return tuple(t.clave for t in TIPOS if not t.es_hibrido)
-
-
 def claves_hibridas() -> set[str]:
     s: set[str] = set()
     for t in TIPOS:

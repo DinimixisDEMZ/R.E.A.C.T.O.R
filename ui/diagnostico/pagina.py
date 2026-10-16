@@ -16,6 +16,14 @@ from ui.historial.entorno import _crear_pagina_entorno
 from utils.i18n import traducir
 
 
+def _matar_scxtop():
+    """Termina cualquier proceso scxtop previo. Sin bloqueo: timeout corto y silencioso."""
+    try:
+        subprocess.run(["pkill", "-f", "scxtop"], capture_output=True, timeout=3)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def configurar_ui_diagnostico(win):
     encabezado = Adw.HeaderBar()
 
@@ -46,7 +54,7 @@ def configurar_ui_diagnostico(win):
                 if nombre == "scxtop":
                     terminal = getattr(win, "_scxtop_term", None)
                     if terminal:
-                        subprocess.run(["pkill", "-f", "scxtop"], capture_output=True)
+                        _matar_scxtop()
                         GLib.timeout_add(300, lambda: (
                             terminal.spawn_async(
                                 Vte.PtyFlags.DEFAULT,
@@ -59,7 +67,7 @@ def configurar_ui_diagnostico(win):
                             )
                         ))
                 else:
-                    subprocess.run(["pkill", "-f", "scxtop"], capture_output=True)
+                    _matar_scxtop()
         pila.connect("notify::visible-child", _al_cambiar_pila)
 
     vista = Adw.ToolbarView(content=pila)

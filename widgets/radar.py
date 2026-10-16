@@ -57,6 +57,16 @@ class RadarChart(Gtk.DrawingArea):
         ev_motion.connect("leave", self._on_leave)
         self.add_controller(ev_motion)
 
+        self.connect("destroy", self._limpiar_timers)
+
+    def _limpiar_timers(self, *args):
+        """Remove pending GLib sources so they don't outlive the widget."""
+        for attr in ("_pulse_id", "_anim_id"):
+            sid = getattr(self, attr)
+            if sid:
+                GLib.source_remove(sid)
+                setattr(self, attr, None)
+
     def _on_motion(self, controller, x, y):
         n = self._num_axes
         if n < 3 or self._progress < 0.5 or self._mode != "radar":

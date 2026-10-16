@@ -16,6 +16,7 @@ from core.tipos import MAPA_CHART, valor_para_grafico, valor_para_ranking, clave
 from core.database import guardar_run, guardar_resultado
 from ui.info_pruebas import mostrar_info_grupo
 from utils.i18n import traducir
+from utils.helpers import abrir_bottom_sheet_logs
 
 
 def configurar_ui_rendimiento(win):
@@ -115,16 +116,7 @@ def configurar_ui_rendimiento(win):
     win._dialog_logs = None
 
     def _abrir_logs():
-        if win._dialog_logs is None:
-            scrolled = Gtk.ScrolledWindow(min_content_height=400, vexpand=True)
-            scrolled.set_child(win.text_view_logs)
-            win._dialog_logs = Adw.Dialog()
-            ancho = win.get_width()
-            win._dialog_logs.set_content_width(max(ancho - 40, 400))
-            win._dialog_logs.set_content_height(500)
-            win._dialog_logs.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
-            win._dialog_logs.set_child(scrolled)
-        win._dialog_logs.present(win)
+        win._dialog_logs = abrir_bottom_sheet_logs(win, win.text_view_logs, win._dialog_logs)
 
     btn_logs = Adw.ActionRow(
         title=traducir("Terminal de Análisis"),

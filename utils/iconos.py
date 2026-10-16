@@ -2,7 +2,7 @@ import os
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gio", "2.0")
-from gi.repository import Gtk, Gdk, Gio
+from gi.repository import Gtk, Gdk, Gio, GLib
 
 DIR_ICONOS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "icons")
 _RUTA_GREOURCE = os.path.join(DIR_ICONOS, "reactor.gresource")
@@ -23,8 +23,8 @@ def registrar_ruta_iconos():
             res = Gio.Resource.load(_RUTA_GREOURCE)
             Gio.resources_register(res)
             tema.add_resource_path(res_path)
-        except Exception:
-            pass
+        except Exception as e:
+            GLib.warning("No se pudo registrar %s: %s", _RUTA_GREOURCE, e)
 
 
 def establecer_iconos_idk(usar_idk):
