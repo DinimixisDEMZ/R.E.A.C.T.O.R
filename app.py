@@ -363,7 +363,9 @@ class VentanaSimple(Adw.ApplicationWindow):
         else:
             def al_validar(pwd):
                 if self.scx.validar_sudo(pwd):
-                    callback()
+                    # validar_sudo corre en un worker (ver DialogoPassword);
+                    # el callback debe volver al hilo de UI.
+                    GLib.idle_add(callback)
                     return True
                 return False
 

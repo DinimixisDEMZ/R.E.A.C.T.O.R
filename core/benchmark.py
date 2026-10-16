@@ -100,7 +100,9 @@ def correr_benchmark(tipo, scx_manager, tv_log=None, tiempo=5, logs=True, modo_d
                 base["fair"] * (0.9 + (seed % 20) / 100.0), sc_act, modo_act)
         
         # ── Construir Comando stress-ng ──
-        yaml_path = tempfile.mktemp(suffix=".yaml", prefix="scxctl_bench_")
+        # mkstemp crea el archivo de forma segura; stress-ng lo sobrescribe con --yaml
+        fd, yaml_path = tempfile.mkstemp(suffix=".yaml", prefix="scxctl_bench_")
+        os.close(fd)
         
         # 1. Latencia (Context Switching): Mide la velocidad del scheduler para cambiar entre tareas
         _TEMP_PATH = ["--temp-path", "/tmp"]

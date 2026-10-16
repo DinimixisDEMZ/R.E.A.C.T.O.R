@@ -3,10 +3,13 @@ Interacción con scxctl y sudo.
 Maneja la comunicación con el sistema de schedulers y la autenticación.
 """
 
+import logging
 import subprocess
 import json
 
 from utils.helpers import RE_RUNNING, RE_JSON_ARRAY
+
+logger = logging.getLogger(__name__)
 
 
 class GestorScx:
@@ -45,9 +48,15 @@ class GestorScx:
         """Detiene todos los schedulers activos y mata procesos scx_."""
         self.ejecutar_con_sudo(["scxctl", "stop"])
         try:
-            subprocess.run(["pkill", "-9", "-f", "scx_"], capture_output=True, timeout=5)
+            res = subprocess.run(
+                ["pkill", "-9", "-e", "-f", "scx_"],
+                capture_output=True, text=True, timeout=5,
+            )
+            matados = (res.stdout + res.stderr).strip()
+            if matados:
+                logger.debug("pkill scx_ terminó procesos: %s", matados)
         except subprocess.TimeoutExpired:
-            pass
+            logger.warning("pkill scx_ excedió el timeout de 5s")
 
     def ejecutar_con_sudo(self, cmd_list):
         """Wrapper seguro: Intenta usar sudo con la sesión activa."""

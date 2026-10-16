@@ -2,6 +2,7 @@
 Pestaña de Disponibilidad: Verificación de compatibilidad BPF de schedulers.
 """
 
+import shutil
 import subprocess
 import threading
 import time
@@ -344,7 +345,8 @@ def _verificar_scheduler_real(win, nombre, row, spinner, icono):
         time.sleep(0.3)
 
         log(win.text_view_logs_disp, traducir("Probando scx_{}...").format(nombre))
-        result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", f"/usr/bin/scx_{nombre}"])
+        ruta_sched = shutil.which(f"scx_{nombre}") or f"/usr/bin/scx_{nombre}"
+        result = win.scx.ejecutar_con_sudo(["timeout", "-k", "1", "5", ruta_sched])
         output = (result.stdout + result.stderr).strip()
 
         if output:
@@ -415,8 +417,9 @@ def iniciar_verificacion(win, btn=None):
         return
 
     def _proceder():
+        win._verificando = True
+
         def _ejecutar():
-            win._verificando = True
             exitosos = []
             GLib.idle_add(win._btn_verificar_disp.set_sensitive, False)
             log(win.text_view_logs_disp, traducir("INICIANDO VERIFICACIÓN DE COMPATIBILIDAD BPF"), nivel="title")

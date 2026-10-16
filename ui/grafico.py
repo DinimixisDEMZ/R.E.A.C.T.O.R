@@ -144,7 +144,6 @@ class GraficoComparativo(Gtk.DrawingArea):
         self._pulse_active = False
         self._pulse_adj.set_value(0.0)
         self.queue_draw()
-        return 0.0, 0.0, 0.0
 
     def on_mouse_move(self, controller, x, y):
         self._hover_x = x

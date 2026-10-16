@@ -3,10 +3,12 @@ Diálogo de autenticación por contraseña.
 Solicita permisos sudo al usuario con estilo Adwaita.
 """
 
+import threading
+
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw
+from gi.repository import Gtk, Adw, GLib
 
 from utils.i18n import traducir
 
@@ -79,16 +81,26 @@ class DialogoPassword(Adw.Dialog):
         self._validando = True
         self.entry.set_sensitive(False)
         self.btn.set_sensitive(False)
+        self.btn.set_label(traducir("Verificando…"))
 
-        if self.on_success(pwd):
+        def _trabajo():
+            ok = self.on_success(pwd)
+            del pwd
+            GLib.idle_add(self._finalizar, ok)
+
+        threading.Thread(target=_trabajo, daemon=True).start()
+
+    def _finalizar(self, ok):
+        """Se ejecuta en el hilo de UI tras validar la contraseña."""
+        if ok:
             self.close()
-            del pwd
-        else:
-            self._validando = False
-            self.entry.set_sensitive(True)
-            self.btn.set_sensitive(True)
-            self.entry.set_text("")
-            self.lbl_error.set_label(traducir("Contraseña incorrecta o fallo en sudo."))
-            self.lbl_error.set_visible(True)
-            self.entry.grab_focus()
-            del pwd
+            return False
+
+        self._validando = False
+        self.entry.set_sensitive(True)
+        self.btn.set_sensitive(True)
+        self.entry.set_text("")
+        self.lbl_error.set_label(traducir("Contraseña incorrecta o fallo en sudo."))
+        self.lbl_error.set_visible(True)
+        self.entry.grab_focus()
+        return False
