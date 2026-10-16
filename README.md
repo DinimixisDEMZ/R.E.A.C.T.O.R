@@ -22,7 +22,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-blue)](https://www.kernel.org/)
 [![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![GTK](https://img.shields.io/badge/gtk-4.0-47748F?logo=gnome&logoColor=white)](https://www.gtk.org/)
-[![Status](https://img.shields.io/badge/status-v1.0.5%20Release-blue)](Status)
+[![Status](https://img.shields.io/badge/status-v1.0.6%20Release-blue)](Status)
 [![Build](https://img.shields.io/badge/build-AppImage-success)](Sucess)
 
 Reactor Experimental Avanzado Concurrente Telúrico para Optimización de Rendimiento

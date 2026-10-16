@@ -267,15 +267,15 @@ class VentanaSimple(Adw.ApplicationWindow):
             support_url="https://github.com/DinimixisDEMZ/R.E.A.C.T.O.R/issues",
             application_icon='reactor',
             release_notes_version=VERSION,
-            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0 — Refactorización y AppImage.</p>
+            release_notes=traducir("""<p>R.E.A.C.T.O.R 1.0.6 — Auditoría, robustez e i18n.</p>
 <ul>
-<li>Refactorización completa del código</li>
-<li>Aplanado de historial git</li>
+<li>Auditoría completa: 4 críticos, 6 altos y 8 medios corregidos</li>
+<li>Password dialog asíncrono (ya no congela la UI)</li>
+<li>Timers y descriptores liberados correctamente</li>
+<li>Español neutro en toda la interfaz</li>
+<li>Traducciones regeneradas (es, en, fr, de, it, pt_BR)</li>
+<li>AppImage: build automático en GitHub con releases</li>
 <li>57 tests automatizados</li>
-<li>AppImage autónomo con hyperfine, cyclictest</li>
-<li>Verificación del sistema con soporte run0</li>
-<li>i18n: español, inglés, francés, alemán, italiano, portugués</li>
-<li>Scoring: media armónica con pesos ajustables</li>
 </ul>"""),
         )
 
